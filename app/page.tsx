@@ -15,6 +15,9 @@ export default async function HomePage() {
     loadError = err instanceof Error ? err.message : 'Failed to load players';
   }
 
+  const defaultPlayer =
+    players.find((p) => p.fullName === 'LeBron James') ?? undefined;
+
   return (
     <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-6 sm:p-8">
       <div className="flex flex-col gap-1">
@@ -37,7 +40,7 @@ export default async function HomePage() {
           </div>
         </div>
       ) : (
-        <ShotMapView players={players} />
+        <ShotMapView players={players} defaultPlayer={defaultPlayer} />
       )}
 
       <footer className="mt-auto pt-6 text-xs text-slate-500">

@@ -237,10 +237,7 @@ function NoShotsState({
   player: Player;
   seasonType: SeasonType;
 }) {
-  const description =
-    seasonType === 'Career'
-      ? `${player.fullName} has no shots in 2025–26 (regular season + playoffs).`
-      : `${player.fullName} has no ${seasonType.toLowerCase()} attempts in 2025–26.`;
+  const description = `${player.fullName} has no ${seasonType.toLowerCase()} attempts in 2025–26.`;
   return (
     <div className="grid h-[60vh] place-items-center text-center text-slate-400">
       <div className="space-y-1">
