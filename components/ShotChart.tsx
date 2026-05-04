@@ -25,12 +25,19 @@ interface Hover {
   y: number;
 }
 
-// Diverging scale: red = below league avg by 10pp, green = above by 10pp.
-const colorScale = d3
-  .scaleDiverging<string>()
-  .domain([-0.1, 0, 0.1])
-  .interpolator(d3.interpolateRdYlGn)
-  .clamp(true);
+// Sequential single-hue scale: pale orange = poor FG%, deep solid orange = elite.
+// Domain spans the realistic NBA shot FG% range (15% on a desperation 3 to 75%
+// at the rim). The interpolator sub-range avoids near-white and near-black ends.
+const FG_PCT_MIN = 0.15;
+const FG_PCT_MAX = 0.75;
+
+function colorForPct(fgPct: number): string {
+  const t = Math.max(
+    0,
+    Math.min(1, (fgPct - FG_PCT_MIN) / (FG_PCT_MAX - FG_PCT_MIN)),
+  );
+  return d3.interpolateOranges(0.1 + t * 0.85);
+}
 
 const fmtPct = (n: number | null | undefined) =>
   n === null || n === undefined || Number.isNaN(n)
@@ -56,15 +63,7 @@ export default function ShotChart({ shots, leagueAverages, zones }: Props) {
 
   function colorFor(agg: ZoneAggregate | undefined): string {
     if (!agg || agg.fga === 0) return 'rgba(255,255,255,0.04)';
-    if (agg.fgPctDelta === null) {
-      return colorScale(agg.fgPct - 0.45);
-    }
-    return colorScale(agg.fgPctDelta);
-  }
-
-  function strokeFor(agg: ZoneAggregate | undefined): string {
-    if (!agg || agg.fga === 0) return 'rgba(255,255,255,0.12)';
-    return 'rgba(255,255,255,0.25)';
+    return colorForPct(agg.fgPct);
   }
 
   return (
@@ -84,8 +83,8 @@ export default function ShotChart({ shots, leagueAverages, zones }: Props) {
                 d={z.d}
                 fill={colorFor(agg)}
                 fillRule={z.fillRule ?? 'nonzero'}
-                stroke={strokeFor(agg)}
-                strokeWidth={1.2}
+                stroke="none"
+                shapeRendering="crispEdges"
                 onMouseMove={(e) => {
                   const svg = e.currentTarget.ownerSVGElement as SVGSVGElement;
                   const rect = svg.getBoundingClientRect();
@@ -209,14 +208,15 @@ export default function ShotChart({ shots, leagueAverages, zones }: Props) {
 }
 
 function Legend() {
-  const stops = d3.range(0, 1.001, 0.05).map((t) => {
-    const v = -0.1 + t * 0.2;
-    return { t, color: colorScale(v) };
-  });
+  const stops = d3.range(0, 1.001, 0.05).map((t) => ({
+    t,
+    color: colorForPct(FG_PCT_MIN + t * (FG_PCT_MAX - FG_PCT_MIN)),
+  }));
   const gradId = 'legend-grad';
   return (
     <div className="mt-3 flex items-center gap-3 text-xs text-slate-400">
-      <span>vs league FG%</span>
+      <span>FG%</span>
+      <span>{`${(FG_PCT_MIN * 100).toFixed(0)}%`}</span>
       <svg viewBox="0 0 200 14" className="h-3 w-48">
         <defs>
           <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
@@ -239,8 +239,7 @@ function Legend() {
           ry={3}
         />
       </svg>
-      <span>−10pp</span>
-      <span className="ml-auto">+10pp</span>
+      <span>{`${(FG_PCT_MAX * 100).toFixed(0)}%`}</span>
     </div>
   );
 }
