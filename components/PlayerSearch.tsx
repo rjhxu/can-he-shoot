@@ -25,7 +25,7 @@ export default function PlayerSearch({ players, selected, onSelect }: Props) {
   }, []);
 
   return (
-    <div ref={containerRef} className="relative w-full max-w-xl">
+    <div ref={containerRef} className="relative z-30 w-full max-w-xl">
       <Command
         label="Search active NBA players"
         shouldFilter
