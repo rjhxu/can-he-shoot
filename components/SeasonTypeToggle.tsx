@@ -5,6 +5,7 @@ import type { SeasonType } from '@/lib/nba/types';
 const OPTIONS: { value: SeasonType; label: string }[] = [
   { value: 'Regular Season', label: 'Regular Season' },
   { value: 'Playoffs', label: 'Playoffs' },
+  { value: 'Career', label: 'Career' },
 ];
 
 interface Props {

@@ -15,7 +15,7 @@ export type ZoneArea =
   | 'Right Side Center(RC)'
   | 'Back Court(BC)';
 
-export type SeasonType = 'Regular Season' | 'Playoffs';
+export type SeasonType = 'Regular Season' | 'Playoffs' | 'Career';
 
 export interface Player {
   personId: number;

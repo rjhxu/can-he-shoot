@@ -15,10 +15,12 @@ export interface ShotsPayload {
   seasonType: SeasonType;
 }
 
-export async function getShots(
+type SingleSeasonType = Exclude<SeasonType, 'Career'>;
+
+async function fetchSingleSeasonType(
   playerId: number,
-  seasonType: SeasonType = 'Regular Season',
-): Promise<ShotsPayload> {
+  seasonType: SingleSeasonType,
+): Promise<{ shots: Shot[]; leagueAverages: LeagueZoneAverage[] }> {
   const url = nbaUrl('shotchartdetail', {
     AheadBehind: '',
     ClutchTime: '',
@@ -89,5 +91,62 @@ export async function getShots(
     }),
   );
 
+  return { shots, leagueAverages };
+}
+
+// Merge two sets of league zone averages by (zoneBasic, zoneArea, zoneRange).
+// Sum fga and fgm across the two season types, then recompute fgPct = fgm/fga
+// so the combined percentage is properly attempt-weighted.
+function mergeLeagueAverages(
+  a: LeagueZoneAverage[],
+  b: LeagueZoneAverage[],
+): LeagueZoneAverage[] {
+  const byKey = new Map<string, LeagueZoneAverage>();
+  const keyOf = (z: LeagueZoneAverage) =>
+    `${z.zoneBasic}__${z.zoneArea}__${z.zoneRange}`;
+
+  for (const z of [...a, ...b]) {
+    const k = keyOf(z);
+    const existing = byKey.get(k);
+    if (!existing) {
+      byKey.set(k, { ...z });
+    } else {
+      const fga = existing.fga + z.fga;
+      const fgm = existing.fgm + z.fgm;
+      byKey.set(k, {
+        zoneBasic: existing.zoneBasic,
+        zoneArea: existing.zoneArea,
+        zoneRange: existing.zoneRange,
+        fga,
+        fgm,
+        fgPct: fga > 0 ? fgm / fga : 0,
+      });
+    }
+  }
+
+  return Array.from(byKey.values());
+}
+
+export async function getShots(
+  playerId: number,
+  seasonType: SeasonType = 'Regular Season',
+): Promise<ShotsPayload> {
+  if (seasonType === 'Career') {
+    const [reg, post] = await Promise.all([
+      fetchSingleSeasonType(playerId, 'Regular Season'),
+      fetchSingleSeasonType(playerId, 'Playoffs'),
+    ]);
+    return {
+      shots: [...reg.shots, ...post.shots],
+      leagueAverages: mergeLeagueAverages(reg.leagueAverages, post.leagueAverages),
+      season: SEASON,
+      seasonType: 'Career',
+    };
+  }
+
+  const { shots, leagueAverages } = await fetchSingleSeasonType(
+    playerId,
+    seasonType,
+  );
   return { shots, leagueAverages, season: SEASON, seasonType };
 }

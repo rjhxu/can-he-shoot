@@ -29,7 +29,9 @@ export const COURT = {
   raRadius: 40,
   threeArcR: 237.5,
   cornerThreeX: 220,
-  cornerBreakY: -92.5,
+  // Where the 22 ft corner-3 line meets the 23.75 ft arc:
+  // y = -sqrt(237.5^2 - 220^2) = -89.475...
+  cornerBreakY: -89.5,
   backboardY: -7.5,
   backboardHalfWidth: 30,
 } as const;
@@ -65,11 +67,11 @@ export const COURT_LINES: CourtLine[] = [
     d: 'M 7.5,0 A 7.5,7.5 0 0 1 -7.5,0 A 7.5,7.5 0 0 1 7.5,0',
   },
   { key: 'restricted-area', d: 'M -40,0 A 40,40 0 0 1 40,0' },
-  { key: 'corner-3-left', d: 'M -220,47.5 L -220,-92.5' },
-  { key: 'corner-3-right', d: 'M 220,47.5 L 220,-92.5' },
+  { key: 'corner-3-left', d: 'M -220,47.5 L -220,-89.5' },
+  { key: 'corner-3-right', d: 'M 220,47.5 L 220,-89.5' },
   {
     key: 'three-arc',
-    d: 'M -220,-92.5 A 237.5,237.5 0 0 1 220,-92.5',
+    d: 'M -220,-89.5 A 237.5,237.5 0 0 1 220,-89.5',
   },
 ];
 
@@ -125,12 +127,16 @@ export const ZONES: ZoneDef[] = [
     textPos: { x: 0, y: -180 },
   },
   {
+    // Mid-Range RC: between 22.5° ray and the corner-break ray (line from
+    // origin through the actual corner break (220, -89.5) ≈ 67.85°).
+    // Inner edge runs along the paint top + paint side; outer edge follows
+    // the 3-pt arc from corner break to the 22.5° point.
     id: 'mid-rc',
     basic: 'Mid-Range',
     area: 'Right Side Center(RC)',
     label: 'Mid-Range — Right Wing',
     d:
-      'M 90.85,-219.4 L 59.03,-142.5 L 80,-142.5 L 80,-33.14 L 219.4,-90.85 ' +
+      'M 90.85,-219.4 L 59.03,-142.5 L 80,-142.5 L 80,-32.55 L 220,-89.5 ' +
       'A 237.5,237.5 0 0 0 90.85,-219.4 Z',
     textPos: { x: 145, y: -160 },
   },
@@ -140,16 +146,19 @@ export const ZONES: ZoneDef[] = [
     area: 'Left Side Center(LC)',
     label: 'Mid-Range — Left Wing',
     d:
-      'M -90.85,-219.4 L -59.03,-142.5 L -80,-142.5 L -80,-33.14 L -219.4,-90.85 ' +
+      'M -90.85,-219.4 L -59.03,-142.5 L -80,-142.5 L -80,-32.55 L -220,-89.5 ' +
       'A 237.5,237.5 0 0 1 -90.85,-219.4 Z',
     textPos: { x: -145, y: -160 },
   },
   {
+    // Mid-Range R: bounded by paint side, baseline, corner-3 line, and the
+    // corner-break ray. Hits the corner break exactly so it tiles cleanly
+    // with the corner 3 and ATB3 zones above it.
     id: 'mid-r',
     basic: 'Mid-Range',
     area: 'Right Side(R)',
     label: 'Mid-Range — Right Baseline',
-    d: 'M 80,47.5 L 80,-33.14 L 219.4,-90.85 L 220,-92.5 L 220,47.5 Z',
+    d: 'M 80,47.5 L 80,-32.55 L 220,-89.5 L 220,47.5 Z',
     textPos: { x: 150, y: -20 },
   },
   {
@@ -157,7 +166,7 @@ export const ZONES: ZoneDef[] = [
     basic: 'Mid-Range',
     area: 'Left Side(L)',
     label: 'Mid-Range — Left Baseline',
-    d: 'M -80,47.5 L -80,-33.14 L -219.4,-90.85 L -220,-92.5 L -220,47.5 Z',
+    d: 'M -80,47.5 L -80,-32.55 L -220,-89.5 L -220,47.5 Z',
     textPos: { x: -150, y: -20 },
   },
   {
@@ -165,7 +174,7 @@ export const ZONES: ZoneDef[] = [
     basic: 'Right Corner 3',
     area: 'Right Side(R)',
     label: 'Right Corner 3',
-    d: 'M 220,47.5 L 250,47.5 L 250,-92.5 L 220,-92.5 Z',
+    d: 'M 220,47.5 L 250,47.5 L 250,-89.5 L 220,-89.5 Z',
     textPos: { x: 235, y: -20 },
   },
   {
@@ -173,18 +182,22 @@ export const ZONES: ZoneDef[] = [
     basic: 'Left Corner 3',
     area: 'Left Side(L)',
     label: 'Left Corner 3',
-    d: 'M -250,47.5 L -220,47.5 L -220,-92.5 L -250,-92.5 Z',
+    d: 'M -250,47.5 L -220,47.5 L -220,-89.5 L -250,-89.5 Z',
     textPos: { x: -235, y: -20 },
   },
   {
+    // ATB3 RC: a flat horizontal bottom at the corner-break y (-89.5)
+    // means it shares its bottom-right edge cleanly with Corner 3 R's
+    // top edge — eliminates the small triangle gap that appeared when
+    // the boundary was angled along the 67.5° ray.
     id: 'atb3-rc',
     basic: 'Above the Break 3',
     area: 'Right Side Center(RC)',
     label: 'Above-Break 3 — Right Wing',
     d:
-      'M 219.4,-90.85 L 250,-103.6 L 250,-422.5 L 175.1,-422.5 ' +
-      'L 90.85,-219.4 A 237.5,237.5 0 0 1 219.4,-90.85 Z',
-    textPos: { x: 195, y: -300 },
+      'M 220,-89.5 L 250,-89.5 L 250,-422.5 L 175.1,-422.5 ' +
+      'L 90.85,-219.4 A 237.5,237.5 0 0 1 220,-89.5 Z',
+    textPos: { x: 200, y: -260 },
   },
   {
     id: 'atb3-c',
@@ -202,9 +215,9 @@ export const ZONES: ZoneDef[] = [
     area: 'Left Side Center(LC)',
     label: 'Above-Break 3 — Left Wing',
     d:
-      'M -219.4,-90.85 L -250,-103.6 L -250,-422.5 L -175.1,-422.5 ' +
-      'L -90.85,-219.4 A 237.5,237.5 0 0 0 -219.4,-90.85 Z',
-    textPos: { x: -195, y: -300 },
+      'M -220,-89.5 L -250,-89.5 L -250,-422.5 L -175.1,-422.5 ' +
+      'L -90.85,-219.4 A 237.5,237.5 0 0 0 -220,-89.5 Z',
+    textPos: { x: -200, y: -260 },
   },
 ];
 

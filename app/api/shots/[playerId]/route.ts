@@ -13,7 +13,7 @@ const PathParams = z.object({
 
 const QuerySchema = z.object({
   seasonType: z
-    .enum(['Regular Season', 'Playoffs'])
+    .enum(['Regular Season', 'Playoffs', 'Career'])
     .optional()
     .default('Regular Season'),
 });

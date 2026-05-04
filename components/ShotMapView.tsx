@@ -131,13 +131,11 @@ function SidePanel({
   }
   return (
     <div className="space-y-4">
-      <div className="flex flex-col items-start gap-3">
-        <PlayerHeadshot player={player} />
-        <div>
-          <div className="text-lg font-semibold text-white">{player.fullName}</div>
-          <div className="text-xs uppercase tracking-wide text-slate-400">
-            {player.teamAbbreviation || '—'} · {seasonType}
-          </div>
+      <PlayerHeadshot player={player} />
+      <div>
+        <div className="text-lg font-semibold text-white">{player.fullName}</div>
+        <div className="text-xs uppercase tracking-wide text-slate-400">
+          {player.teamAbbreviation || '—'} · {seasonType}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3 text-sm">
@@ -173,26 +171,25 @@ function PlayerHeadshot({ player }: { player: Player }) {
     .slice(0, 2)
     .join('')
     .toUpperCase();
-  const baseClasses =
-    'h-24 w-24 rounded-xl border border-white/10 bg-slate-950/40';
-  if (errored) {
-    return (
-      <div
-        className={`${baseClasses} flex items-center justify-center text-lg font-semibold text-slate-300`}
-        aria-label={`${player.fullName} headshot`}
-      >
-        {initials || '—'}
-      </div>
-    );
-  }
   return (
-    <img
-      src={`https://cdn.nba.com/headshots/nba/latest/260x190/${player.personId}.png`}
-      alt={`${player.fullName} headshot`}
-      loading="lazy"
-      onError={() => setErrored(true)}
-      className={`${baseClasses} object-cover`}
-    />
+    <div className="-m-4 mb-4">
+      {errored ? (
+        <div
+          className="flex aspect-[260/190] w-full items-center justify-center rounded-t-2xl bg-slate-800 text-lg font-semibold text-slate-300"
+          aria-label={`${player.fullName} headshot`}
+        >
+          {initials || '—'}
+        </div>
+      ) : (
+        <img
+          src={`https://cdn.nba.com/headshots/nba/latest/260x190/${player.personId}.png`}
+          alt={`${player.fullName} headshot`}
+          loading="lazy"
+          onError={() => setErrored(true)}
+          className="aspect-[260/190] w-full rounded-t-2xl object-cover"
+        />
+      )}
+    </div>
   );
 }
 
@@ -240,13 +237,15 @@ function NoShotsState({
   player: Player;
   seasonType: SeasonType;
 }) {
+  const description =
+    seasonType === 'Career'
+      ? `${player.fullName} has no shots in 2025–26 (regular season + playoffs).`
+      : `${player.fullName} has no ${seasonType.toLowerCase()} attempts in 2025–26.`;
   return (
     <div className="grid h-[60vh] place-items-center text-center text-slate-400">
       <div className="space-y-1">
         <div className="text-lg font-medium text-slate-200">No shots yet</div>
-        <div className="text-sm">
-          {player.fullName} has no {seasonType.toLowerCase()} attempts in 2025–26.
-        </div>
+        <div className="text-sm">{description}</div>
       </div>
     </div>
   );
