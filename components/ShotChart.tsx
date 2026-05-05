@@ -194,10 +194,7 @@ export default function ShotChart({
                   overflow="visible"
                   pointerEvents="none"
                 >
-                  <div
-                    xmlns="http://www.w3.org/1999/xhtml"
-                    className="flex h-full w-full items-center justify-center font-sans"
-                  >
+                  <div className="flex h-full w-full items-center justify-center font-sans">
                     <div
                       className="rounded-md px-2 py-[3px] shadow-[0_1px_2px_rgba(0,0,0,0.75)] backdrop-blur-[1px]"
                       style={{ background: 'rgba(0,0,0,0.48)', width: 'fit-content', maxWidth: '100%' }}
