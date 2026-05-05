@@ -2,6 +2,7 @@
 
 import * as d3 from 'd3';
 import { useId, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   COURT_LINES,
   COURT_VIEWBOX,
@@ -218,40 +219,42 @@ export default function ShotChart({
         </g>
       </svg>
 
-      {tooltip && (
-        <div
-          className="pointer-events-none fixed z-[100] rounded-md border border-white/10 bg-slate-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
-          style={{ left: tooltip.vx + 14, top: tooltip.vy + 14 }}
-        >
-          <div className="font-semibold text-white">{tooltip.zone.label}</div>
-          {tooltip.agg && tooltip.agg.fga > 0 ? (
-            <div className="mt-1 space-y-0.5 text-slate-200">
-              <div>
-                {tooltip.agg.fgm} / {tooltip.agg.fga} ·{' '}
-                <span className="font-semibold">
-                  {fmtPct(tooltip.agg.fgPct)}
-                </span>
-              </div>
-              <div className="text-slate-400">
-                League: {fmtPct(tooltip.agg.leagueFgPct)}
-                {tooltip.agg.fgPctDelta !== null && (
-                  <span
-                    className={
-                      tooltip.agg.fgPctDelta >= 0
-                        ? 'ml-2 text-emerald-400'
-                        : 'ml-2 text-rose-400'
-                    }
-                  >
-                    {fmtSignedPp(tooltip.agg.fgPctDelta)}
+      {tooltip &&
+        createPortal(
+          <div
+            className="pointer-events-none fixed z-[9999] rounded-md border border-white/10 bg-slate-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
+            style={{ left: tooltip.vx + 14, top: tooltip.vy + 14 }}
+          >
+            <div className="font-semibold text-white">{tooltip.zone.label}</div>
+            {tooltip.agg && tooltip.agg.fga > 0 ? (
+              <div className="mt-1 space-y-0.5 text-slate-200">
+                <div>
+                  {tooltip.agg.fgm} / {tooltip.agg.fga} ·{' '}
+                  <span className="font-semibold">
+                    {fmtPct(tooltip.agg.fgPct)}
                   </span>
-                )}
+                </div>
+                <div className="text-slate-400">
+                  League: {fmtPct(tooltip.agg.leagueFgPct)}
+                  {tooltip.agg.fgPctDelta !== null && (
+                    <span
+                      className={
+                        tooltip.agg.fgPctDelta >= 0
+                          ? 'ml-2 text-emerald-400'
+                          : 'ml-2 text-rose-400'
+                      }
+                    >
+                      {fmtSignedPp(tooltip.agg.fgPctDelta)}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="mt-1 text-slate-400">No attempts</div>
-          )}
-        </div>
-      )}
+            ) : (
+              <div className="mt-1 text-slate-400">No attempts</div>
+            )}
+          </div>,
+          document.body,
+        )}
 
       <Legend uid={uid} />
     </div>

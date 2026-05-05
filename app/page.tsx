@@ -45,7 +45,6 @@ export default async function HomePage() {
 
       <footer className="mt-auto pt-6 text-xs text-slate-500">
         Data via stats.nba.com
-        <code className="text-slate-400">nba_api</code> wraps).
       </footer>
     </main>
   );
