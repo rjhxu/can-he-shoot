@@ -1,4 +1,4 @@
-# where-he-shoot-from
+# can-he-shoot
 
 A Next.js app that renders an interactive zone heatmap for every active NBA
 player's 2025-26 shooting. Search any active player, get the half-court chart

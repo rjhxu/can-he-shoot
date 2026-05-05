@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Where He Shoot From',
+  title: 'Can he shoot?',
   description: 'Interactive 2025-26 NBA shot map for every active player.',
 };
 
