@@ -32,8 +32,9 @@ interface Props {
 interface TooltipHover {
   zone: ZoneDef;
   agg: ZoneAggregate | undefined;
-  x: number;
-  y: number;
+  /** Viewport coords so the tooltip stacks above sibling columns (e.g. sidebar). */
+  vx: number;
+  vy: number;
 }
 
 /** Red (below league) → yellow (neutral) → green (above league). */
@@ -100,21 +101,6 @@ export default function ShotChart({
         }}
       >
         <defs>
-          <filter
-            id={`${uid}-labelShadow`}
-            x="-60%"
-            y="-60%"
-            width="220%"
-            height="220%"
-          >
-            <feDropShadow
-              dx={0}
-              dy={1}
-              stdDeviation={2}
-              floodColor="#000000"
-              floodOpacity={0.75}
-            />
-          </filter>
           {ZONES.map((z) => {
             const agg = aggMap.get(`${z.basic}|${z.area}`);
             const { inner, outer } = zoneFillColors(agg);
@@ -151,23 +137,19 @@ export default function ShotChart({
                 shapeRendering="geometricPrecision"
                 onMouseEnter={(e) => {
                   onZoneHover?.({ zone: z, agg });
-                  const svg = e.currentTarget.ownerSVGElement as SVGSVGElement;
-                  const rect = svg.getBoundingClientRect();
                   setTooltip({
                     zone: z,
                     agg,
-                    x: e.clientX - rect.left,
-                    y: e.clientY - rect.top,
+                    vx: e.clientX,
+                    vy: e.clientY,
                   });
                 }}
                 onMouseMove={(e) => {
-                  const svg = e.currentTarget.ownerSVGElement as SVGSVGElement;
-                  const rect = svg.getBoundingClientRect();
                   setTooltip({
                     zone: z,
                     agg,
-                    x: e.clientX - rect.left,
-                    y: e.clientY - rect.top,
+                    vx: e.clientX,
+                    vy: e.clientY,
                   });
                 }}
               />
@@ -195,51 +177,41 @@ export default function ShotChart({
           ))}
         </g>
 
-        <g
-          className="labels"
-          pointerEvents="none"
-          fontFamily="ui-sans-serif, system-ui, sans-serif"
-        >
+        <g className="labels pointer-events-none">
           {ZONES.map((z) => {
             const agg = aggMap.get(`${z.basic}|${z.area}`);
             const fga = agg?.fga ?? 0;
             const fgPct = agg && agg.fga > 0 ? agg.fgPct : null;
             return (
-              <g
-                key={`label-${z.id}`}
-                transform={`translate(${z.textPos.x}, ${z.textPos.y})`}
-              >
-                <rect
-                  x={-44}
-                  y={-24}
-                  width={88}
-                  height={44}
-                  rx={8}
-                  ry={8}
-                  fill="rgba(0,0,0,0.48)"
-                />
-                <text
-                  x={0}
-                  y={-6}
-                  textAnchor="middle"
-                  fontSize={12}
-                  fontWeight={700}
-                  fill="#f8fafc"
-                  filter={`url(#${uid}-labelShadow)`}
+              <g key={`label-${z.id}`} transform={`translate(${z.textPos.x}, ${z.textPos.y})`}>
+                {/* Wide viewport avoids clipping; centered flex lays out a shrink-to-fit pill */}
+                <foreignObject
+                  x={-132}
+                  y={-52}
+                  width={264}
+                  height={104}
+                  overflow="visible"
+                  pointerEvents="none"
                 >
-                  {fga > 0 ? `${agg!.fgm}/${agg!.fga}` : '—'}
-                </text>
-                <text
-                  x={0}
-                  y={10}
-                  textAnchor="middle"
-                  fontSize={10}
-                  fontWeight={600}
-                  fill="#e2e8f0"
-                  filter={`url(#${uid}-labelShadow)`}
-                >
-                  {fmtPct(fgPct)}
-                </text>
+                  <div
+                    xmlns="http://www.w3.org/1999/xhtml"
+                    className="flex h-full w-full items-center justify-center font-sans"
+                  >
+                    <div
+                      className="rounded-md px-2 py-[3px] shadow-[0_1px_2px_rgba(0,0,0,0.75)] backdrop-blur-[1px]"
+                      style={{ background: 'rgba(0,0,0,0.48)', width: 'fit-content', maxWidth: '100%' }}
+                    >
+                      <div className="whitespace-nowrap text-center tabular-nums">
+                        <div className="text-[11px] font-bold leading-tight tracking-tight text-slate-50">
+                          {fga > 0 ? `${agg!.fgm}/${agg!.fga}` : '—'}
+                        </div>
+                        <div className="mt-px text-[10px] font-semibold leading-tight tracking-tight text-slate-200">
+                          {fmtPct(fgPct)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </foreignObject>
               </g>
             );
           })}
@@ -248,8 +220,8 @@ export default function ShotChart({
 
       {tooltip && (
         <div
-          className="pointer-events-none absolute z-10 rounded-md border border-white/10 bg-slate-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
-          style={{ left: tooltip.x + 14, top: tooltip.y + 14 }}
+          className="pointer-events-none fixed z-[100] rounded-md border border-white/10 bg-slate-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
+          style={{ left: tooltip.vx + 14, top: tooltip.vy + 14 }}
         >
           <div className="font-semibold text-white">{tooltip.zone.label}</div>
           {tooltip.agg && tooltip.agg.fga > 0 ? (

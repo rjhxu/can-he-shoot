@@ -117,7 +117,7 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
           ) : null}
         </div>
 
-        <aside className="relative overflow-visible rounded-2xl border border-white/10 bg-slate-900/35 px-4 pb-4 pt-16 backdrop-blur-md">
+        <aside className="relative overflow-visible rounded-2xl border border-white/10 bg-slate-900/35 px-4 pb-4 pt-[5.5rem] backdrop-blur-md">
           <SidePanel
             player={selected}
             seasonType={seasonType}
@@ -278,7 +278,7 @@ function PlayerHeadshot({
   );
 
   return (
-    <div className="relative -mt-14 mb-2 w-full">
+    <div className="relative -mt-11 mb-2 w-full">
       <div
         className="relative w-full rounded-xl"
         style={{
@@ -293,11 +293,11 @@ function PlayerHeadshot({
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-slate-400">
+    <div className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2.5">
+      <div className="text-[11px] uppercase tracking-wider text-slate-400">
         {label}
       </div>
-      <div className="text-lg font-semibold text-white">{value}</div>
+      <div className="text-xl font-semibold tabular-nums text-white">{value}</div>
     </div>
   );
 }
