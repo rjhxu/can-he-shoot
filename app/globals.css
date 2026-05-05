@@ -16,3 +16,25 @@ body {
 body {
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
 }
+
+@keyframes court-shimmer {
+  0%,
+  100% {
+    opacity: 0.42;
+  }
+  50% {
+    opacity: 0.78;
+  }
+}
+
+.court-skeleton-zones path {
+  animation: court-shimmer 1.45s ease-in-out infinite;
+}
+
+.court-skeleton-zones path:nth-child(odd) {
+  animation-delay: 0.2s;
+}
+
+.court-skeleton-legend {
+  animation: court-shimmer 1.45s ease-in-out infinite;
+}

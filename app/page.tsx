@@ -19,7 +19,7 @@ export default async function HomePage() {
     players.find((p) => p.fullName === 'LeBron James') ?? undefined;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 p-6 sm:p-8">
+    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 p-6 sm:p-8">
       <div className="flex flex-col gap-1">
         <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
           Where He Shoot From?

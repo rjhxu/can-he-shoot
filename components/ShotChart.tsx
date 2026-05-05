@@ -1,7 +1,7 @@
 'use client';
 
 import * as d3 from 'd3';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import {
   COURT_LINES,
   COURT_VIEWBOX,
@@ -10,45 +10,70 @@ import {
 } from '@/lib/nba/court';
 import type { LeagueZoneAverage, Shot, ZoneAggregate } from '@/lib/nba/types';
 import { aggregateByZone } from '@/lib/aggregate';
+import { fmtPct, fmtSignedPp } from '@/lib/formatShot';
+
+/** Symmetric domain for FG% delta (player − league), in percentage points as decimal. */
+const FG_DELTA_DOMAIN = 0.18;
+
+export interface ZoneHoverPayload {
+  zone: ZoneDef;
+  agg: ZoneAggregate | undefined;
+}
 
 interface Props {
   shots: Shot[];
   leagueAverages: LeagueZoneAverage[];
   /** Optional pre-computed zones (the API route already sends these). */
   zones?: ZoneAggregate[];
+  hoveredZoneId?: string | null;
+  onZoneHover?: (payload: ZoneHoverPayload | null) => void;
 }
 
-interface Hover {
+interface TooltipHover {
   zone: ZoneDef;
   agg: ZoneAggregate | undefined;
   x: number;
   y: number;
 }
 
-// Sequential single-hue scale: pale orange = poor FG%, deep solid orange = elite.
-// Domain spans the realistic NBA shot FG% range (15% on a desperation 3 to 75%
-// at the rim). The interpolator sub-range avoids near-white and near-black ends.
-const FG_PCT_MIN = 0.15;
-const FG_PCT_MAX = 0.75;
-
-function colorForPct(fgPct: number): string {
+/** Red (below league) → yellow (neutral) → green (above league). */
+function colorForDelta(delta: number): string {
   const t = Math.max(
     0,
-    Math.min(1, (fgPct - FG_PCT_MIN) / (FG_PCT_MAX - FG_PCT_MIN)),
+    Math.min(1, (delta + FG_DELTA_DOMAIN) / (2 * FG_DELTA_DOMAIN)),
   );
-  return d3.interpolateOranges(0.1 + t * 0.85);
+  return d3.interpolateRdYlGn(t);
 }
 
-const fmtPct = (n: number | null | undefined) =>
-  n === null || n === undefined || Number.isNaN(n)
-    ? '—'
-    : `${(n * 100).toFixed(1)}%`;
+function zoneFillColors(agg: ZoneAggregate | undefined): {
+  inner: string;
+  outer: string;
+} {
+  if (!agg || agg.fga === 0) {
+    const m = 'rgba(255,255,255,0.06)';
+    return { inner: m, outer: 'rgba(255,255,255,0.02)' };
+  }
+  if (agg.leagueFgPct === null || agg.fgPctDelta === null) {
+    const m = 'rgba(148,163,184,0.22)';
+    return { inner: m, outer: 'rgba(148,163,184,0.06)' };
+  }
+  const inner = colorForDelta(agg.fgPctDelta);
+  const rgb = d3.rgb(inner);
+  const outer = `rgba(${rgb.r},${rgb.g},${rgb.b},0.28)`;
+  return { inner, outer };
+}
 
-const fmtSigned = (n: number) =>
-  `${n >= 0 ? '+' : ''}${(n * 100).toFixed(1)}pp`;
+const HOVER_STROKE = '#22d3ee';
 
-export default function ShotChart({ shots, leagueAverages, zones }: Props) {
-  const [hover, setHover] = useState<Hover | null>(null);
+export default function ShotChart({
+  shots,
+  leagueAverages,
+  zones,
+  hoveredZoneId,
+  onZoneHover,
+}: Props) {
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  const [tooltip, setTooltip] = useState<TooltipHover | null>(null);
 
   const aggregates = useMemo(
     () => zones ?? aggregateByZone(shots, leagueAverages),
@@ -61,10 +86,7 @@ export default function ShotChart({ shots, leagueAverages, zones }: Props) {
     return m;
   }, [aggregates]);
 
-  function colorFor(agg: ZoneAggregate | undefined): string {
-    if (!agg || agg.fga === 0) return 'rgba(255,255,255,0.04)';
-    return colorForPct(agg.fgPct);
-  }
+  const radialR = 130;
 
   return (
     <div className="relative w-full">
@@ -72,30 +94,82 @@ export default function ShotChart({ shots, leagueAverages, zones }: Props) {
         viewBox={COURT_VIEWBOX}
         className="block h-auto w-full"
         style={{ background: '#0e1422', borderRadius: 12 }}
-        onMouseLeave={() => setHover(null)}
+        onMouseLeave={() => {
+          setTooltip(null);
+          onZoneHover?.(null);
+        }}
       >
+        <defs>
+          <filter
+            id={`${uid}-labelShadow`}
+            x="-60%"
+            y="-60%"
+            width="220%"
+            height="220%"
+          >
+            <feDropShadow
+              dx={0}
+              dy={1}
+              stdDeviation={2}
+              floodColor="#000000"
+              floodOpacity={0.75}
+            />
+          </filter>
+          {ZONES.map((z) => {
+            const agg = aggMap.get(`${z.basic}|${z.area}`);
+            const { inner, outer } = zoneFillColors(agg);
+            const gid = `${uid}-fill-${z.id}`;
+            return (
+              <radialGradient
+                key={gid}
+                id={gid}
+                gradientUnits="userSpaceOnUse"
+                cx={z.textPos.x}
+                cy={z.textPos.y}
+                r={radialR}
+              >
+                <stop offset="0%" stopColor={inner} />
+                <stop offset="100%" stopColor={outer} />
+              </radialGradient>
+            );
+          })}
+        </defs>
+
         <g className="zones">
           {ZONES.map((z) => {
             const agg = aggMap.get(`${z.basic}|${z.area}`);
+            const gid = `${uid}-fill-${z.id}`;
+            const isHovered = hoveredZoneId === z.id;
             return (
               <path
                 key={z.id}
                 d={z.d}
-                fill={colorFor(agg)}
+                fill={`url(#${gid})`}
                 fillRule={z.fillRule ?? 'nonzero'}
-                stroke="none"
-                shapeRendering="crispEdges"
-                onMouseMove={(e) => {
+                stroke={isHovered ? HOVER_STROKE : 'none'}
+                strokeWidth={isHovered ? 2.5 : 0}
+                shapeRendering="geometricPrecision"
+                onMouseEnter={(e) => {
+                  onZoneHover?.({ zone: z, agg });
                   const svg = e.currentTarget.ownerSVGElement as SVGSVGElement;
                   const rect = svg.getBoundingClientRect();
-                  setHover({
+                  setTooltip({
                     zone: z,
                     agg,
                     x: e.clientX - rect.left,
                     y: e.clientY - rect.top,
                   });
                 }}
-                onMouseLeave={() => setHover(null)}
+                onMouseMove={(e) => {
+                  const svg = e.currentTarget.ownerSVGElement as SVGSVGElement;
+                  const rect = svg.getBoundingClientRect();
+                  setTooltip({
+                    zone: z,
+                    agg,
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top,
+                  });
+                }}
               />
             );
           })}
@@ -135,29 +209,34 @@ export default function ShotChart({ shots, leagueAverages, zones }: Props) {
                 key={`label-${z.id}`}
                 transform={`translate(${z.textPos.x}, ${z.textPos.y})`}
               >
+                <rect
+                  x={-44}
+                  y={-24}
+                  width={88}
+                  height={44}
+                  rx={8}
+                  ry={8}
+                  fill="rgba(0,0,0,0.48)"
+                />
                 <text
                   x={0}
-                  y={0}
+                  y={-6}
                   textAnchor="middle"
-                  fontSize={14}
+                  fontSize={12}
                   fontWeight={700}
-                  fill="#0b0f17"
-                  stroke="rgba(255,255,255,0.6)"
-                  strokeWidth={0.3}
-                  paintOrder="stroke"
+                  fill="#f8fafc"
+                  filter={`url(#${uid}-labelShadow)`}
                 >
                   {fga > 0 ? `${agg!.fgm}/${agg!.fga}` : '—'}
                 </text>
                 <text
                   x={0}
-                  y={16}
+                  y={10}
                   textAnchor="middle"
-                  fontSize={11}
+                  fontSize={10}
                   fontWeight={600}
-                  fill="#0b0f17"
-                  stroke="rgba(255,255,255,0.6)"
-                  strokeWidth={0.3}
-                  paintOrder="stroke"
+                  fill="#e2e8f0"
+                  filter={`url(#${uid}-labelShadow)`}
                 >
                   {fmtPct(fgPct)}
                 </text>
@@ -167,31 +246,31 @@ export default function ShotChart({ shots, leagueAverages, zones }: Props) {
         </g>
       </svg>
 
-      {hover && (
+      {tooltip && (
         <div
-          className="pointer-events-none absolute z-10 rounded-md border border-white/10 bg-slate-900/95 px-3 py-2 text-xs shadow-xl"
-          style={{ left: hover.x + 14, top: hover.y + 14 }}
+          className="pointer-events-none absolute z-10 rounded-md border border-white/10 bg-slate-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
+          style={{ left: tooltip.x + 14, top: tooltip.y + 14 }}
         >
-          <div className="font-semibold text-white">{hover.zone.label}</div>
-          {hover.agg && hover.agg.fga > 0 ? (
+          <div className="font-semibold text-white">{tooltip.zone.label}</div>
+          {tooltip.agg && tooltip.agg.fga > 0 ? (
             <div className="mt-1 space-y-0.5 text-slate-200">
               <div>
-                {hover.agg.fgm} / {hover.agg.fga} ·{' '}
+                {tooltip.agg.fgm} / {tooltip.agg.fga} ·{' '}
                 <span className="font-semibold">
-                  {fmtPct(hover.agg.fgPct)}
+                  {fmtPct(tooltip.agg.fgPct)}
                 </span>
               </div>
               <div className="text-slate-400">
-                League: {fmtPct(hover.agg.leagueFgPct)}
-                {hover.agg.fgPctDelta !== null && (
+                League: {fmtPct(tooltip.agg.leagueFgPct)}
+                {tooltip.agg.fgPctDelta !== null && (
                   <span
                     className={
-                      hover.agg.fgPctDelta >= 0
+                      tooltip.agg.fgPctDelta >= 0
                         ? 'ml-2 text-emerald-400'
                         : 'ml-2 text-rose-400'
                     }
                   >
-                    {fmtSigned(hover.agg.fgPctDelta)}
+                    {fmtSignedPp(tooltip.agg.fgPctDelta)}
                   </span>
                 )}
               </div>
@@ -202,22 +281,22 @@ export default function ShotChart({ shots, leagueAverages, zones }: Props) {
         </div>
       )}
 
-      <Legend />
+      <Legend uid={uid} />
     </div>
   );
 }
 
-function Legend() {
-  const stops = d3.range(0, 1.001, 0.05).map((t) => ({
+function Legend({ uid }: { uid: string }) {
+  const gradId = `${uid}-legend-grad`;
+  const stops = d3.range(0, 1.001, 0.04).map((t) => ({
     t,
-    color: colorForPct(FG_PCT_MIN + t * (FG_PCT_MAX - FG_PCT_MIN)),
+    color: colorForDelta(-FG_DELTA_DOMAIN + t * 2 * FG_DELTA_DOMAIN),
   }));
-  const gradId = 'legend-grad';
   return (
-    <div className="mt-3 flex items-center gap-3 text-xs text-slate-400">
-      <span>FG%</span>
-      <span>{`${(FG_PCT_MIN * 100).toFixed(0)}%`}</span>
-      <svg viewBox="0 0 200 14" className="h-3 w-48">
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+      <span className="shrink-0">vs league</span>
+      <span className="shrink-0 text-rose-300/90">Below</span>
+      <svg viewBox="0 0 200 14" className="h-3 w-48 shrink-0">
         <defs>
           <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
             {stops.map((s) => (
@@ -239,7 +318,10 @@ function Legend() {
           ry={3}
         />
       </svg>
-      <span>{`${(FG_PCT_MAX * 100).toFixed(0)}%`}</span>
+      <span className="shrink-0 text-emerald-300/90">Above</span>
+      <span className="ml-1 shrink-0 text-slate-500">
+        (±{(FG_DELTA_DOMAIN * 100).toFixed(0)}pp)
+      </span>
     </div>
   );
 }
