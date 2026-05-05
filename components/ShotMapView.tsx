@@ -278,7 +278,7 @@ function PlayerHeadshot({
   );
 
   return (
-    <div className="relative -mt-11 mb-2 w-full">
+    <div className="relative -mt-[4.5rem] mb-2 w-full">
       <div
         className="relative w-full rounded-xl"
         style={{
