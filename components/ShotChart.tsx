@@ -38,31 +38,26 @@ interface TooltipHover {
   vy: number;
 }
 
-/** Red (below league) → yellow (neutral) → green (above league). */
+/** Vibrant red (below league) -> neutral slate -> vibrant green (above league). */
 function colorForDelta(delta: number): string {
   const t = Math.max(
     0,
     Math.min(1, (delta + FG_DELTA_DOMAIN) / (2 * FG_DELTA_DOMAIN)),
   );
-  return d3.interpolateRdYlGn(t);
+  if (t <= 0.5) {
+    return d3.interpolateRgb('#ff1f4b', '#334155')(t / 0.5);
+  }
+  return d3.interpolateRgb('#334155', '#00e676')((t - 0.5) / 0.5);
 }
 
-function zoneFillColors(agg: ZoneAggregate | undefined): {
-  inner: string;
-  outer: string;
-} {
+function zoneFillColor(agg: ZoneAggregate | undefined): string {
   if (!agg || agg.fga === 0) {
-    const m = 'rgba(255,255,255,0.06)';
-    return { inner: m, outer: 'rgba(255,255,255,0.02)' };
+    return 'rgba(255,255,255,0.06)';
   }
   if (agg.leagueFgPct === null || agg.fgPctDelta === null) {
-    const m = 'rgba(148,163,184,0.22)';
-    return { inner: m, outer: 'rgba(148,163,184,0.06)' };
+    return 'rgba(148,163,184,0.22)';
   }
-  const inner = colorForDelta(agg.fgPctDelta);
-  const rgb = d3.rgb(inner);
-  const outer = `rgba(${rgb.r},${rgb.g},${rgb.b},0.28)`;
-  return { inner, outer };
+  return colorForDelta(agg.fgPctDelta);
 }
 
 const HOVER_STROKE = '#22d3ee';
@@ -88,8 +83,6 @@ export default function ShotChart({
     return m;
   }, [aggregates]);
 
-  const radialR = 130;
-
   return (
     <div className="relative w-full">
       <svg
@@ -101,37 +94,15 @@ export default function ShotChart({
           onZoneHover?.(null);
         }}
       >
-        <defs>
-          {ZONES.map((z) => {
-            const agg = aggMap.get(`${z.basic}|${z.area}`);
-            const { inner, outer } = zoneFillColors(agg);
-            const gid = `${uid}-fill-${z.id}`;
-            return (
-              <radialGradient
-                key={gid}
-                id={gid}
-                gradientUnits="userSpaceOnUse"
-                cx={z.textPos.x}
-                cy={z.textPos.y}
-                r={radialR}
-              >
-                <stop offset="0%" stopColor={inner} />
-                <stop offset="100%" stopColor={outer} />
-              </radialGradient>
-            );
-          })}
-        </defs>
-
         <g className="zones">
           {ZONES.map((z) => {
             const agg = aggMap.get(`${z.basic}|${z.area}`);
-            const gid = `${uid}-fill-${z.id}`;
             const isHovered = hoveredZoneId === z.id;
             return (
               <path
                 key={z.id}
                 d={z.d}
-                fill={`url(#${gid})`}
+                fill={zoneFillColor(agg)}
                 fillRule={z.fillRule ?? 'nonzero'}
                 stroke={isHovered ? HOVER_STROKE : 'none'}
                 strokeWidth={isHovered ? 2.5 : 0}
