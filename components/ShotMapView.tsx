@@ -96,7 +96,7 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
         <SeasonTypeToggle value={seasonType} onChange={setSeasonType} />
       </header>
 
-      <section className="grid gap-6 lg:grid-cols-[1fr_300px]">
+      <section className="grid items-start gap-6 lg:grid-cols-[1fr_300px]">
         <div className="rounded-2xl border border-white/10 bg-slate-900/35 p-2 backdrop-blur-md sm:p-3">
           {!selected ? (
             <EmptyState />
