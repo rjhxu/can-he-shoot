@@ -31,6 +31,16 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Data sync scraper
 
+The scraper is intentionally stingy toward `stats.nba.com`:
+
+- **`--mode players`**: **1** NBA request (`commonallplayers`)
+- **`--mode shots`**: **1** NBA request (`shotchartdetail`, league-wide `PlayerID=0`)
+- **`--mode all`**: **2** NBA requests total, with a **random 2–6s** pause between them
+
+There is **no per-player shot loop**, so this will not hammer the API hundreds of times per run. Retries only happen on transient errors (still bounded).
+
+League-wide shot rows are **filtered** to `person_id`s that exist in `nba_players` before upsert, so inserts respect a foreign key from `nba_shots` → `nba_players` (some chart rows are for players not on the synced active roster).
+
 Install Python deps:
 
 ```bash
@@ -46,7 +56,7 @@ python scripts/nba_scraper.py --mode all
 # Players only
 python scripts/nba_scraper.py --mode players
 
-# Shots only
+# Shots only (one league-wide shotchartdetail call; PlayerID=0, TeamID=0)
 python scripts/nba_scraper.py --mode shots
 ```
 
@@ -54,7 +64,6 @@ Other useful flags:
 
 ```bash
 python scripts/nba_scraper.py --season 2025-26 --season-type "Regular Season"
-python scripts/nba_scraper.py --player-ids 2544,201939 --max-players 2
 ```
 
 The scraper is idempotent by design: it uses Supabase `upsert` on
@@ -66,8 +75,8 @@ instead of duplicating them.
 Workflow file: `.github/workflows/nba_sync.yml`
 
 - Triggered by schedule and `workflow_dispatch`
-- Shots job runs on every trigger
-- Players job runs once daily (and also on manual dispatch)
+- Shots job runs daily; players job runs weekly (each job makes **exactly 1** NBA request — see scraper section above)
+- Manual dispatch runs **both** jobs, often in parallel (two runners ≈ two near-simultaneous NBA calls; use rerun on a single job if you want only one)
 - Both jobs read:
   - `secrets.SUPABASE_URL`
   - `secrets.SUPABASE_SERVICE_ROLE_KEY`

@@ -2,10 +2,17 @@
 """
 Scrape NBA player and shot data from stats.nba.com and upsert into Supabase.
 
+stats.nba.com HTTP usage (minimal by design — no per-player shot loops):
+
+  --mode players  -> 1 request (commonallplayers)
+  --mode shots    -> 1 request (shotchartdetail, league-wide PlayerID=0 TeamID=0)
+  --mode all      -> 2 requests total (players, then shots; randomized delay between)
+
+Retries only occur on transient 429/5xx or errors (bounded by MAX_RETRIES).
+
 Usage examples:
   python scripts/nba_scraper.py
   python scripts/nba_scraper.py --season 2025-26 --season-type "Regular Season"
-  python scripts/nba_scraper.py --player-ids 2544,201939
 """
 
 from __future__ import annotations
@@ -17,8 +24,9 @@ import sys
 import time
 from typing import Any, Dict, Iterable, List, Optional
 
+import httpx
 from curl_cffi import requests
-from supabase import Client, create_client
+from supabase import Client, ClientOptions, create_client
 
 NBA_STATS_URL = "https://stats.nba.com/stats"
 DEFAULT_SEASON = "2025-26"
@@ -26,7 +34,36 @@ DEFAULT_SEASON_TYPE = "Regular Season"
 DEFAULT_TIMEOUT_SECONDS = 20
 MAX_RETRIES = 3
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
-REQUEST_DELAY_RANGE_SECONDS = (1.0, 3.0)
+SUPABASE_HTTP_TIMEOUT = httpx.Timeout(180.0, connect=45.0)
+SUPABASE_PLAYERS_BATCH = 300
+SUPABASE_SHOTS_BATCH = 80
+SUPABASE_UPSERT_MAX_RETRIES = 6
+
+
+def _transport_retryable(exc: BaseException) -> bool:
+    return isinstance(
+        exc,
+        (
+            httpx.ReadError,
+            httpx.ConnectError,
+            httpx.ConnectTimeout,
+            httpx.ReadTimeout,
+            httpx.WriteError,
+            httpx.RemoteProtocolError,
+            httpx.WriteTimeout,
+        ),
+    )
+
+
+def _caused_by_retryable_transport(exc: BaseException) -> bool:
+    cur: Optional[BaseException] = exc
+    while cur is not None:
+        if _transport_retryable(cur):
+            return True
+        cur = cur.__cause__
+    return False
+# Be conservative between NBA endpoints to reduce throttle / soft-ban risk on shared IPs.
+REQUEST_DELAY_RANGE_SECONDS = (2.0, 6.0)
 
 COMMON_HEADERS = {
     "Referer": "https://www.nba.com/",
@@ -238,43 +275,147 @@ def _supabase_client() -> Client:
         raise RuntimeError(
             "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables."
         )
-    return create_client(supabase_url, service_role_key)
+    # HTTP/2 + very large JSON bodies has triggered TLS record errors for some users;
+    # disable HTTP/2 and use longer timeouts for batched upserts.
+    shared_httpx = httpx.Client(http2=False, timeout=SUPABASE_HTTP_TIMEOUT)
+    options = ClientOptions(
+        httpx_client=shared_httpx,
+        postgrest_client_timeout=SUPABASE_HTTP_TIMEOUT,
+    )
+    return create_client(supabase_url, service_role_key, options=options)
 
 
-def upsert_players(supabase: Client, players: List[Dict[str, Any]], batch_size: int = 500) -> None:
+def _stable_upsert_batch(
+    supabase: Client,
+    *,
+    table: str,
+    batch: List[Dict[str, Any]],
+    on_conflict: str,
+    label: str,
+) -> None:
+    """Retry whole batch on flaky TLS/transient transport (e.g. SSL BAD_RECORD_MAC)."""
+    last_error: Optional[BaseException] = None
+    for attempt in range(1, SUPABASE_UPSERT_MAX_RETRIES + 1):
+        try:
+            supabase.table(table).upsert(batch, on_conflict=on_conflict).execute()
+            return
+        except BaseException as exc:  # noqa: BLE001 — walk __cause__ for wrapped TLS errors
+            if not _caused_by_retryable_transport(exc):
+                raise
+            last_error = exc
+            if attempt == SUPABASE_UPSERT_MAX_RETRIES:
+                break
+            wait_s = (2 ** (attempt - 1)) + random.uniform(0.15, 0.95)
+            print(
+                f"[supabase] {label}: transient transport error ({type(exc).__name__}: {exc!s}); "
+                f"retry {attempt}/{SUPABASE_UPSERT_MAX_RETRIES} in {wait_s:.1f}s",
+                flush=True,
+            )
+            time.sleep(wait_s)
+    raise RuntimeError(f"[supabase] {label}: exhausted retries ({last_error!r}).") from last_error
+
+
+def upsert_players(
+    supabase: Client,
+    players: List[Dict[str, Any]],
+    batch_size: int = SUPABASE_PLAYERS_BATCH,
+) -> None:
     if not players:
         print("[supabase] No players to upsert.", flush=True)
         return
 
     total = 0
-    for batch in _chunk(players, batch_size):
-        supabase.table("nba_players").upsert(batch, on_conflict="person_id").execute()
+    batches = list(_chunk(players, batch_size))
+    for idx, batch in enumerate(batches, start=1):
+        label = f"nba_players batch {idx}/{len(batches)}"
+        _stable_upsert_batch(
+            supabase,
+            table="nba_players",
+            batch=batch,
+            on_conflict="person_id",
+            label=label,
+        )
         total += len(batch)
     print(f"[supabase] Upserted {total} player rows.", flush=True)
 
 
-def upsert_shots(supabase: Client, shots: List[Dict[str, Any]], batch_size: int = 500) -> None:
+def _known_person_ids(supabase: Client) -> set[int]:
+    """person_ids present in nba_players (required when nba_shots.person_id has an FK there)."""
+    ids: set[int] = set()
+    page_size = 1000
+    start = 0
+    while True:
+        res = (
+            supabase.table("nba_players")
+            .select("person_id")
+            .range(start, start + page_size - 1)
+            .execute()
+        )
+        rows = res.data or []
+        for row in rows:
+            ids.add(int(row["person_id"]))
+        if len(rows) < page_size:
+            break
+        start += page_size
+    return ids
+
+
+def _dedupe_shots_last_wins(shots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Collapse rows that share the same shot_id. Later rows win (Postgres rejects
+    duplicate conflict keys in a single upsert statement).
+    """
+    by_id: Dict[str, Dict[str, Any]] = {}
+    missing_id = 0
+    for row in shots:
+        sid = str(row.get("shot_id") or "")
+        if not sid:
+            missing_id += 1
+            continue
+        by_id[sid] = row
+    if missing_id:
+        print(
+            f"[supabase] Skipped {missing_id} shot row(s) with empty shot_id.",
+            flush=True,
+        )
+    return list(by_id.values())
+
+
+def upsert_shots(
+    supabase: Client,
+    shots: List[Dict[str, Any]],
+    batch_size: int = SUPABASE_SHOTS_BATCH,
+) -> int:
+    """Returns number of rows upserted after deduplication by shot_id."""
     if not shots:
         print("[supabase] No shots to upsert for this player.", flush=True)
-        return
+        return 0
+
+    incoming = len(shots)
+    shots = _dedupe_shots_last_wins(shots)
+    dupes = incoming - len(shots)
+    if dupes:
+        print(
+            f"[supabase] Collapsed {dupes} duplicate shot_id row(s); keeping last occurrence per id.",
+            flush=True,
+        )
 
     total = 0
-    for batch in _chunk(shots, batch_size):
-        supabase.table("nba_shots").upsert(batch, on_conflict="shot_id").execute()
+    batches = list(_chunk(shots, batch_size))
+    for idx, batch in enumerate(batches, start=1):
+        label = f"nba_shots batch {idx}/{len(batches)}"
+        _stable_upsert_batch(
+            supabase,
+            table="nba_shots",
+            batch=batch,
+            on_conflict="shot_id",
+            label=label,
+        )
         total += len(batch)
+        if idx % 20 == 0 or idx == len(batches):
+            print(f"[supabase] Progress: {total}/{len(shots)} shot rows committed.", flush=True)
     print(f"[supabase] Upserted {total} shot rows.", flush=True)
-
-
-def _parse_player_ids(raw_player_ids: Optional[str]) -> List[int]:
-    if not raw_player_ids:
-        return []
-    parsed: List[int] = []
-    for part in raw_player_ids.split(","):
-        value = part.strip()
-        if not value:
-            continue
-        parsed.append(int(value))
-    return parsed
+    return total
 
 
 def parse_args() -> argparse.Namespace:
@@ -292,23 +433,13 @@ def parse_args() -> argparse.Namespace:
         choices=["Regular Season", "Playoffs"],
         help=f"Season type (default: {DEFAULT_SEASON_TYPE})",
     )
-    parser.add_argument(
-        "--player-ids",
-        default="",
-        help="Optional comma-separated player IDs. If omitted, all active players are processed.",
-    )
-    parser.add_argument(
-        "--max-players",
-        type=int,
-        default=0,
-        help="Optional limit for number of players to process (0 means no limit).",
-    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     supabase = _supabase_client()
+    shots_upsert_count = 0
 
     with requests.Session() as session:
         players: List[Dict[str, Any]] = []
@@ -320,35 +451,37 @@ def main() -> int:
             print(f"[done] Finished players-only sync for season={args.season}.", flush=True)
             return 0
 
-        requested_player_ids = _parse_player_ids(args.player_ids)
-        if requested_player_ids:
-            player_ids = requested_player_ids
-            print(f"[run] Using {len(player_ids)} explicit player IDs.", flush=True)
-        else:
-            if not players:
-                players = fetch_players(session=session, season=args.season)
-            player_ids = [int(player["person_id"]) for player in players]
-            print(f"[run] Using all active players ({len(player_ids)}).", flush=True)
+        print("[run] League-wide shot sync (shotchartdetail PlayerID=0, TeamID=0).", flush=True)
+        league_shots = fetch_shots(
+            session=session,
+            player_id=0,
+            season=args.season,
+            season_type=args.season_type,
+        )
 
-        if args.max_players and args.max_players > 0:
-            player_ids = player_ids[: args.max_players]
-            print(f"[run] Applying --max-players={args.max_players}.", flush=True)
-
-        total_shots = 0
-        for idx, player_id in enumerate(player_ids, start=1):
-            print(f"[run] ({idx}/{len(player_ids)}) Fetching shots for player {player_id}...", flush=True)
-            shots = fetch_shots(
-                session=session,
-                player_id=player_id,
-                season=args.season,
-                season_type=args.season_type,
+        allowed_ids = _known_person_ids(supabase)
+        if not allowed_ids:
+            print(
+                "[shots] nba_players is empty — cannot upsert shots (foreign key). "
+                "Run `python scripts/nba_scraper.py --mode players` first.",
+                flush=True,
             )
-            upsert_shots(supabase, shots)
-            total_shots += len(shots)
+            return 1
+
+        filtered_shots = [s for s in league_shots if int(s.get("person_id") or 0) in allowed_ids]
+        dropped = len(league_shots) - len(filtered_shots)
+        if dropped:
+            print(
+                f"[shots] Dropping {dropped} rows whose person_id is not in nba_players "
+                f"(league chart includes shooters outside the synced active roster).",
+                flush=True,
+            )
+
+        shots_upsert_count = upsert_shots(supabase, filtered_shots)
 
     print(
         f"[done] Finished scraping season={args.season} season_type='{args.season_type}'. "
-        f"Players processed={len(player_ids)}, total shots processed={total_shots}.",
+        f"League-wide shots upserted={shots_upsert_count}.",
         flush=True,
     )
     return 0
