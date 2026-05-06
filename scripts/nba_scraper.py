@@ -24,8 +24,9 @@ import sys
 import time
 from typing import Any, Dict, Iterable, List, Optional
 
+import httpx
 from curl_cffi import requests
-from supabase import Client, create_client
+from supabase import Client, ClientOptions, create_client
 
 NBA_STATS_URL = "https://stats.nba.com/stats"
 DEFAULT_SEASON = "2025-26"
@@ -33,6 +34,34 @@ DEFAULT_SEASON_TYPE = "Regular Season"
 DEFAULT_TIMEOUT_SECONDS = 20
 MAX_RETRIES = 3
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+SUPABASE_HTTP_TIMEOUT = httpx.Timeout(180.0, connect=45.0)
+SUPABASE_PLAYERS_BATCH = 300
+SUPABASE_SHOTS_BATCH = 80
+SUPABASE_UPSERT_MAX_RETRIES = 6
+
+
+def _transport_retryable(exc: BaseException) -> bool:
+    return isinstance(
+        exc,
+        (
+            httpx.ReadError,
+            httpx.ConnectError,
+            httpx.ConnectTimeout,
+            httpx.ReadTimeout,
+            httpx.WriteError,
+            httpx.RemoteProtocolError,
+            httpx.WriteTimeout,
+        ),
+    )
+
+
+def _caused_by_retryable_transport(exc: BaseException) -> bool:
+    cur: Optional[BaseException] = exc
+    while cur is not None:
+        if _transport_retryable(cur):
+            return True
+        cur = cur.__cause__
+    return False
 # Be conservative between NBA endpoints to reduce throttle / soft-ban risk on shared IPs.
 REQUEST_DELAY_RANGE_SECONDS = (2.0, 6.0)
 
@@ -246,17 +275,66 @@ def _supabase_client() -> Client:
         raise RuntimeError(
             "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables."
         )
-    return create_client(supabase_url, service_role_key)
+    # HTTP/2 + very large JSON bodies has triggered TLS record errors for some users;
+    # disable HTTP/2 and use longer timeouts for batched upserts.
+    shared_httpx = httpx.Client(http2=False, timeout=SUPABASE_HTTP_TIMEOUT)
+    options = ClientOptions(
+        httpx_client=shared_httpx,
+        postgrest_client_timeout=SUPABASE_HTTP_TIMEOUT,
+    )
+    return create_client(supabase_url, service_role_key, options=options)
 
 
-def upsert_players(supabase: Client, players: List[Dict[str, Any]], batch_size: int = 500) -> None:
+def _stable_upsert_batch(
+    supabase: Client,
+    *,
+    table: str,
+    batch: List[Dict[str, Any]],
+    on_conflict: str,
+    label: str,
+) -> None:
+    """Retry whole batch on flaky TLS/transient transport (e.g. SSL BAD_RECORD_MAC)."""
+    last_error: Optional[BaseException] = None
+    for attempt in range(1, SUPABASE_UPSERT_MAX_RETRIES + 1):
+        try:
+            supabase.table(table).upsert(batch, on_conflict=on_conflict).execute()
+            return
+        except BaseException as exc:  # noqa: BLE001 — walk __cause__ for wrapped TLS errors
+            if not _caused_by_retryable_transport(exc):
+                raise
+            last_error = exc
+            if attempt == SUPABASE_UPSERT_MAX_RETRIES:
+                break
+            wait_s = (2 ** (attempt - 1)) + random.uniform(0.15, 0.95)
+            print(
+                f"[supabase] {label}: transient transport error ({type(exc).__name__}: {exc!s}); "
+                f"retry {attempt}/{SUPABASE_UPSERT_MAX_RETRIES} in {wait_s:.1f}s",
+                flush=True,
+            )
+            time.sleep(wait_s)
+    raise RuntimeError(f"[supabase] {label}: exhausted retries ({last_error!r}).") from last_error
+
+
+def upsert_players(
+    supabase: Client,
+    players: List[Dict[str, Any]],
+    batch_size: int = SUPABASE_PLAYERS_BATCH,
+) -> None:
     if not players:
         print("[supabase] No players to upsert.", flush=True)
         return
 
     total = 0
-    for batch in _chunk(players, batch_size):
-        supabase.table("nba_players").upsert(batch, on_conflict="person_id").execute()
+    batches = list(_chunk(players, batch_size))
+    for idx, batch in enumerate(batches, start=1):
+        label = f"nba_players batch {idx}/{len(batches)}"
+        _stable_upsert_batch(
+            supabase,
+            table="nba_players",
+            batch=batch,
+            on_conflict="person_id",
+            label=label,
+        )
         total += len(batch)
     print(f"[supabase] Upserted {total} player rows.", flush=True)
 
@@ -303,7 +381,11 @@ def _dedupe_shots_last_wins(shots: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     return list(by_id.values())
 
 
-def upsert_shots(supabase: Client, shots: List[Dict[str, Any]], batch_size: int = 500) -> None:
+def upsert_shots(
+    supabase: Client,
+    shots: List[Dict[str, Any]],
+    batch_size: int = SUPABASE_SHOTS_BATCH,
+) -> None:
     if not shots:
         print("[supabase] No shots to upsert for this player.", flush=True)
         return
@@ -318,9 +400,19 @@ def upsert_shots(supabase: Client, shots: List[Dict[str, Any]], batch_size: int 
         )
 
     total = 0
-    for batch in _chunk(shots, batch_size):
-        supabase.table("nba_shots").upsert(batch, on_conflict="shot_id").execute()
+    batches = list(_chunk(shots, batch_size))
+    for idx, batch in enumerate(batches, start=1):
+        label = f"nba_shots batch {idx}/{len(batches)}"
+        _stable_upsert_batch(
+            supabase,
+            table="nba_shots",
+            batch=batch,
+            on_conflict="shot_id",
+            label=label,
+        )
         total += len(batch)
+        if idx % 20 == 0 or idx == len(batches):
+            print(f"[supabase] Progress: {total}/{len(shots)} shot rows committed.", flush=True)
     print(f"[supabase] Upserted {total} shot rows.", flush=True)
 
 
