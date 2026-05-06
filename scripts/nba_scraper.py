@@ -282,10 +282,40 @@ def _known_person_ids(supabase: Client) -> set[int]:
     return ids
 
 
+def _dedupe_shots_last_wins(shots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Collapse rows that share the same shot_id. Later rows win (Postgres rejects
+    duplicate conflict keys in a single upsert statement).
+    """
+    by_id: Dict[str, Dict[str, Any]] = {}
+    missing_id = 0
+    for row in shots:
+        sid = str(row.get("shot_id") or "")
+        if not sid:
+            missing_id += 1
+            continue
+        by_id[sid] = row
+    if missing_id:
+        print(
+            f"[supabase] Skipped {missing_id} shot row(s) with empty shot_id.",
+            flush=True,
+        )
+    return list(by_id.values())
+
+
 def upsert_shots(supabase: Client, shots: List[Dict[str, Any]], batch_size: int = 500) -> None:
     if not shots:
         print("[supabase] No shots to upsert for this player.", flush=True)
         return
+
+    incoming = len(shots)
+    shots = _dedupe_shots_last_wins(shots)
+    dupes = incoming - len(shots)
+    if dupes:
+        print(
+            f"[supabase] Collapsed {dupes} duplicate shot_id row(s); keeping last occurrence per id.",
+            flush=True,
+        )
 
     total = 0
     for batch in _chunk(shots, batch_size):
