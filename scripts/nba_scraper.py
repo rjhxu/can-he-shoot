@@ -5,8 +5,8 @@ Scrape NBA player and shot data from stats.nba.com and upsert into Supabase.
 stats.nba.com HTTP usage (minimal by design — no per-player shot loops):
 
   --mode players  -> 1 request (commonallplayers)
-  --mode shots    -> 1 request (shotchartdetail, league-wide PlayerID=0 TeamID=0)
-  --mode all      -> 2 requests total (players, then shots; randomized delay between)
+  --mode shots    -> 1 request (shotchartdetail, league-wide; --season-type picks RS vs PO)
+  --mode all      -> 1 commonallplayers + 2 shotchartdetail (always RS then PO)
 
 Retries only occur on transient 429/5xx or errors (bounded by MAX_RETRIES).
 
@@ -179,14 +179,18 @@ def fetch_players(session: requests.Session, season: str = DEFAULT_SEASON) -> Li
     return players
 
 
-def _build_shot_id(shot_row: Dict[str, Any], player_id: int) -> str:
+def _shot_id_for_row(shot_row: Dict[str, Any], player_id: int, season_type: str) -> str:
+    """Regular season keeps legacy id shape; playoffs prefix po_ so rows don't collide in one table."""
     game_id = str(shot_row.get("GAME_ID") or "")
     period = int(shot_row.get("PERIOD") or 0)
     minutes_remaining = int(shot_row.get("MINUTES_REMAINING") or 0)
     seconds_remaining = int(shot_row.get("SECONDS_REMAINING") or 0)
     loc_x = int(shot_row.get("LOC_X") or 0)
     loc_y = int(shot_row.get("LOC_Y") or 0)
-    return f"{game_id}_{player_id}_{period}_{minutes_remaining}_{seconds_remaining}_{loc_x}_{loc_y}"
+    base = f"{game_id}_{player_id}_{period}_{minutes_remaining}_{seconds_remaining}_{loc_x}_{loc_y}"
+    if season_type == "Playoffs":
+        return f"po_{base}"
+    return base
 
 
 def fetch_shots(
@@ -237,9 +241,10 @@ def fetch_shots(
         resolved_player_id = int(row.get("PLAYER_ID") or player_id)
         shots.append(
             {
-                "shot_id": _build_shot_id(row, resolved_player_id),
+                "shot_id": _shot_id_for_row(row, resolved_player_id, season_type),
                 "game_id": str(row.get("GAME_ID") or ""),
                 "person_id": resolved_player_id,
+                "season_type": season_type,
                 "game_date": str(row.get("GAME_DATE") or ""),
                 "period": int(row.get("PERIOD") or 0),
                 "minutes_remaining": int(row.get("MINUTES_REMAINING") or 0),
@@ -431,7 +436,10 @@ def parse_args() -> argparse.Namespace:
         "--season-type",
         default=DEFAULT_SEASON_TYPE,
         choices=["Regular Season", "Playoffs"],
-        help=f"Season type (default: {DEFAULT_SEASON_TYPE})",
+        help=(
+            f"Shot-chart season segment (default: {DEFAULT_SEASON_TYPE}). "
+            "Used by --mode shots only; --mode all always pulls Regular Season plus Playoffs."
+        ),
     )
     return parser.parse_args()
 
@@ -451,12 +459,10 @@ def main() -> int:
             print(f"[done] Finished players-only sync for season={args.season}.", flush=True)
             return 0
 
-        print("[run] League-wide shot sync (shotchartdetail PlayerID=0, TeamID=0).", flush=True)
-        league_shots = fetch_shots(
-            session=session,
-            player_id=0,
-            season=args.season,
-            season_type=args.season_type,
+        shot_types: tuple[str, ...] = (
+            ("Regular Season", "Playoffs")
+            if args.mode == "all"
+            else (args.season_type,)
         )
 
         allowed_ids = _known_person_ids(supabase)
@@ -468,20 +474,36 @@ def main() -> int:
             )
             return 1
 
-        filtered_shots = [s for s in league_shots if int(s.get("person_id") or 0) in allowed_ids]
-        dropped = len(league_shots) - len(filtered_shots)
-        if dropped:
+        for st_label in shot_types:
             print(
-                f"[shots] Dropping {dropped} rows whose person_id is not in nba_players "
-                f"(league chart includes shooters outside the synced active roster).",
+                f"[run] League-wide shot sync — {st_label} (shotchartdetail PlayerID=0, TeamID=0).",
                 flush=True,
             )
+            league_shots = fetch_shots(
+                session=session,
+                player_id=0,
+                season=args.season,
+                season_type=st_label,
+            )
 
-        shots_upsert_count = upsert_shots(supabase, filtered_shots)
+            filtered_shots = [s for s in league_shots if int(s.get("person_id") or 0) in allowed_ids]
+            dropped = len(league_shots) - len(filtered_shots)
+            if dropped:
+                print(
+                    f"[shots] [{st_label}] Dropping {dropped} rows whose person_id is not in nba_players "
+                    f"(league chart includes shooters outside the synced active roster).",
+                    flush=True,
+                )
 
+            shots_upsert_count += upsert_shots(supabase, filtered_shots)
+
+    if args.mode == "all":
+        done_season_types = "Regular Season + Playoffs"
+    else:
+        done_season_types = args.season_type
     print(
-        f"[done] Finished scraping season={args.season} season_type='{args.season_type}'. "
-        f"League-wide shots upserted={shots_upsert_count}.",
+        f"[done] Finished scraping season={args.season} season_type_scope='{done_season_types}'. "
+        f"League-wide shots upserted(total)={shots_upsert_count}.",
         flush=True,
     )
     return 0
