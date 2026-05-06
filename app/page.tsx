@@ -35,8 +35,8 @@ export default async function HomePage() {
           <div className="font-semibold">Couldn’t load the player list.</div>
           <div className="mt-1 text-rose-200/80">{loadError}</div>
           <div className="mt-2 text-xs text-rose-200/60">
-            stats.nba.com may be rate-limiting this IP. See the README for the
-            Python sidecar fallback if this keeps happening.
+            The Supabase data cache may still be warming up. See the README for
+            scraper setup details if this persists.
           </div>
         </div>
       ) : (
@@ -44,7 +44,7 @@ export default async function HomePage() {
       )}
 
       <footer className="mt-auto pt-6 text-xs text-slate-500">
-        Data via stats.nba.com
+        Data via Supabase (synced from stats.nba.com)
       </footer>
     </main>
   );

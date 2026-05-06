@@ -1,7 +1,7 @@
-import { nbaFetch, nbaUrl, tableToObjects } from './client';
+import { unstable_cache } from 'next/cache';
+import { getSupabaseServerClient } from '@/lib/supabase';
 import type {
   LeagueZoneAverage,
-  NbaApiResponse,
   SeasonType,
   Shot,
 } from './types';
@@ -17,76 +17,66 @@ export interface ShotsPayload {
 
 async function fetchSingleSeasonType(
   playerId: number,
-  seasonType: SeasonType,
 ): Promise<{ shots: Shot[]; leagueAverages: LeagueZoneAverage[] }> {
-  const url = nbaUrl('shotchartdetail', {
-    AheadBehind: '',
-    ClutchTime: '',
-    ContextFilter: '',
-    ContextMeasure: 'FGA',
-    DateFrom: '',
-    DateTo: '',
-    EndPeriod: 0,
-    EndRange: 28800,
-    GameID: '',
-    GameSegment: '',
-    LastNGames: 0,
-    LeagueID: '00',
-    Location: '',
-    Month: 0,
-    OpponentTeamID: 0,
-    Outcome: '',
-    Period: 0,
-    PlayerID: playerId,
-    PlayerPosition: '',
-    PointDiff: '',
-    Position: '',
-    RangeType: 0,
-    RookieYear: '',
-    Season: SEASON,
-    SeasonSegment: '',
-    SeasonType: seasonType,
-    StartPeriod: 0,
-    StartRange: 0,
-    TeamID: 0,
-    VsConference: '',
-    VsDivision: '',
-  });
+  const supabase = getSupabaseServerClient();
 
-  const res = await nbaFetch(url, {
-    revalidate: 3_600,
-    tags: [`shots:${playerId}`],
-  });
-  const payload = (await res.json()) as NbaApiResponse;
+  const { data: shotRows, error: shotError } = await supabase
+    .from('nba_shots')
+    .select(
+      'game_id, game_date, period, minutes_remaining, seconds_remaining, action_type, shot_type, shot_zone_basic, shot_zone_area, shot_zone_range, shot_distance, loc_x, loc_y, shot_made_flag',
+    )
+    .eq('person_id', playerId)
+    .order('game_date', { ascending: false });
 
-  const shots = tableToObjects(payload, 'Shot_Chart_Detail', (row) => ({
-    gameId: String(row.GAME_ID ?? ''),
-    gameDate: String(row.GAME_DATE ?? ''),
-    period: Number(row.PERIOD ?? 0),
-    minutesRemaining: Number(row.MINUTES_REMAINING ?? 0),
-    secondsRemaining: Number(row.SECONDS_REMAINING ?? 0),
-    actionType: String(row.ACTION_TYPE ?? ''),
-    shotType: String(row.SHOT_TYPE ?? ''),
-    zoneBasic: String(row.SHOT_ZONE_BASIC ?? ''),
-    zoneArea: String(row.SHOT_ZONE_AREA ?? ''),
-    zoneRange: String(row.SHOT_ZONE_RANGE ?? ''),
-    shotDistance: Number(row.SHOT_DISTANCE ?? 0),
-    locX: Number(row.LOC_X ?? 0),
-    locY: Number(row.LOC_Y ?? 0),
-    made: Number(row.SHOT_MADE_FLAG ?? 0) === 1,
+  if (shotError) {
+    throw new Error(`Failed to fetch shots from Supabase: ${shotError.message}`);
+  }
+
+  const shots: Shot[] = (shotRows ?? []).map((row) => ({
+    gameId: String(row.game_id ?? ''),
+    gameDate: String(row.game_date ?? ''),
+    period: Number(row.period ?? 0),
+    minutesRemaining: Number(row.minutes_remaining ?? 0),
+    secondsRemaining: Number(row.seconds_remaining ?? 0),
+    actionType: String(row.action_type ?? ''),
+    shotType: String(row.shot_type ?? ''),
+    zoneBasic: String(row.shot_zone_basic ?? ''),
+    zoneArea: String(row.shot_zone_area ?? ''),
+    zoneRange: String(row.shot_zone_range ?? ''),
+    shotDistance: Number(row.shot_distance ?? 0),
+    locX: Number(row.loc_x ?? 0),
+    locY: Number(row.loc_y ?? 0),
+    made: Number(row.shot_made_flag ?? 0) === 1,
   }));
 
-  const leagueAverages = tableToObjects(
-    payload,
-    'LeagueAverages',
-    (row): LeagueZoneAverage => ({
-      zoneBasic: String(row.SHOT_ZONE_BASIC ?? ''),
-      zoneArea: String(row.SHOT_ZONE_AREA ?? ''),
-      zoneRange: String(row.SHOT_ZONE_RANGE ?? ''),
-      fga: Number(row.FGA ?? 0),
-      fgm: Number(row.FGM ?? 0),
-      fgPct: Number(row.FG_PCT ?? 0),
-    }),
+  const { data: leagueRows, error: leagueError } = await supabase
+    .from('nba_shots')
+    .select('shot_zone_basic, shot_zone_area, shot_zone_range, shot_made_flag');
+
+  if (leagueError) {
+    throw new Error(
+      `Failed to fetch league averages from Supabase: ${leagueError.message}`,
+    );
+  }
+
+  const grouped = new Map<string, { fga: number; fgm: number }>();
+  for (const row of leagueRows ?? []) {
+    const zoneBasic = String(row.shot_zone_basic ?? '');
+    const zoneArea = String(row.shot_zone_area ?? '');
+    const zoneRange = String(row.shot_zone_range ?? '');
+    const key = `${zoneBasic}__${zoneArea}__${zoneRange}`;
+    const current = grouped.get(key) ?? { fga: 0, fgm: 0 };
+    current.fga += 1;
+    current.fgm += Number(row.shot_made_flag ?? 0) === 1 ? 1 : 0;
+    grouped.set(key, current);
+  }
+
+  const leagueAverages: LeagueZoneAverage[] = Array.from(grouped.entries()).map(
+    ([key, value]) => {
+      const [zoneBasic, zoneArea, zoneRange] = key.split('__');
+      const fgPct = value.fga > 0 ? value.fgm / value.fga : 0;
+      return { zoneBasic, zoneArea, zoneRange, fga: value.fga, fgm: value.fgm, fgPct };
+    },
   );
 
   return { shots, leagueAverages };
@@ -96,9 +86,12 @@ export async function getShots(
   playerId: number,
   seasonType: SeasonType = 'Regular Season',
 ): Promise<ShotsPayload> {
-  const { shots, leagueAverages } = await fetchSingleSeasonType(
-    playerId,
-    seasonType,
+  const cacheKey = `nba_shots_${playerId}_${seasonType}`;
+  const cachedGetter = unstable_cache(
+    async () => fetchSingleSeasonType(playerId),
+    [cacheKey],
+    { revalidate: 1_800 },
   );
+  const { shots, leagueAverages } = await cachedGetter();
   return { shots, leagueAverages, season: SEASON, seasonType };
 }

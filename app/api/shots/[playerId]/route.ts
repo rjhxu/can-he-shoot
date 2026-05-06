@@ -2,10 +2,9 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getShots } from '@/lib/nba/shots';
 import { aggregateByZone, computeTotals } from '@/lib/aggregate';
-import { NbaApiError } from '@/lib/nba/client';
 import type { SeasonType } from '@/lib/nba/types';
 
-export const revalidate = 3_600;
+export const revalidate = 1_800;
 
 const PathParams = z.object({
   playerId: z.string().regex(/^\d+$/, 'playerId must be numeric'),
@@ -66,16 +65,7 @@ export async function GET(
       },
     );
   } catch (err) {
-    if (err instanceof NbaApiError) {
-      console.error(
-        `[/api/shots/${playerId}] ${err.status} ${err.message}`,
-      );
-      return NextResponse.json(
-        { error: err.message, status: err.status },
-        { status: err.status === 504 ? 504 : 502 },
-      );
-    }
-    console.error(`[/api/shots/${playerId}] unknown error`, err);
+    console.error(`[/api/shots/${playerId}] error`, err);
     return NextResponse.json(
       { error: 'Internal error fetching shots' },
       { status: 500 },
