@@ -2,15 +2,15 @@ name: NBA Supabase Sync
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
-    - cron: '0 5 * * *'
+    - cron: '0 8 * * *'
+    - cron: '0 8 * * 0'
   workflow_dispatch:
 
 jobs:
   sync_players:
-    name: Sync players (daily)
+    name: Sync players (weekly)
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 5 * * *'
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 8 * * 0'
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -30,8 +30,9 @@ jobs:
         run: python scripts/nba_scraper.py --mode players
 
   sync_shots:
-    name: Sync shots (every trigger)
+    name: Sync shots (daily 3AM EST)
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 8 * * *'
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
