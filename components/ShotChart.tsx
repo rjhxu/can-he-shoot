@@ -4,10 +4,12 @@ import * as d3 from 'd3';
 import { useId, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  COURT,
   COURT_LINES,
   COURT_VIEWBOX,
   ZONES,
   type ZoneDef,
+  toSvg,
 } from '@/lib/nba/court';
 import type { LeagueZoneAverage, Shot, ZoneAggregate } from '@/lib/nba/types';
 import { aggregateByZone } from '@/lib/aggregate';
@@ -21,19 +23,42 @@ export interface ZoneHoverPayload {
   agg: ZoneAggregate | undefined;
 }
 
+export type ShotChartMode = 'heatmap' | 'shotchart';
+export type ShotResultFilter = 'makes' | 'misses';
+
 interface Props {
   shots: Shot[];
   leagueAverages: LeagueZoneAverage[];
   /** Optional pre-computed zones (the API route already sends these). */
   zones?: ZoneAggregate[];
+  mode?: ShotChartMode;
+  shotResultFilter?: ShotResultFilter;
+  onShotResultFilterChange?: (filter: ShotResultFilter) => void;
   hoveredZoneId?: string | null;
   onZoneHover?: (payload: ZoneHoverPayload | null) => void;
 }
 
-interface TooltipHover {
+interface ZoneTooltipHover {
   zone: ZoneDef;
   agg: ZoneAggregate | undefined;
   /** Viewport coords so the tooltip stacks above sibling columns (e.g. sidebar). */
+  vx: number;
+  vy: number;
+}
+
+interface HexBin {
+  q: number;
+  r: number;
+  x: number;
+  y: number;
+  total: number;
+  makes: number;
+  misses: number;
+}
+
+interface HexTooltipHover {
+  bin: HexBin;
+  filter: ShotResultFilter;
   vx: number;
   vy: number;
 }
@@ -61,16 +86,22 @@ function zoneFillColor(agg: ZoneAggregate | undefined): string {
 }
 
 const HOVER_STROKE = '#22d3ee';
+const HEX_RADIUS = 8;
+const SQRT_3 = Math.sqrt(3);
 
 export default function ShotChart({
   shots,
   leagueAverages,
   zones,
+  mode = 'heatmap',
+  shotResultFilter = 'makes',
+  onShotResultFilterChange,
   hoveredZoneId,
   onZoneHover,
 }: Props) {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
-  const [tooltip, setTooltip] = useState<TooltipHover | null>(null);
+  const [zoneTooltip, setZoneTooltip] = useState<ZoneTooltipHover | null>(null);
+  const [hexTooltip, setHexTooltip] = useState<HexTooltipHover | null>(null);
 
   const aggregates = useMemo(
     () => zones ?? aggregateByZone(shots, leagueAverages),
@@ -83,6 +114,20 @@ export default function ShotChart({
     return m;
   }, [aggregates]);
 
+  const hexBins = useMemo(
+    () => buildHexBins(shots, shotResultFilter, HEX_RADIUS),
+    [shots, shotResultFilter],
+  );
+
+  const maxBinValue = useMemo(
+    () =>
+      hexBins.reduce((max, bin) => {
+        const value = shotResultFilter === 'makes' ? bin.makes : bin.misses;
+        return Math.max(max, value);
+      }, 0),
+    [hexBins, shotResultFilter],
+  );
+
   return (
     <div className="relative w-full">
       <svg
@@ -90,44 +135,80 @@ export default function ShotChart({
         className="block h-auto w-full"
         style={{ background: '#0e1422', borderRadius: 12 }}
         onMouseLeave={() => {
-          setTooltip(null);
+          setZoneTooltip(null);
+          setHexTooltip(null);
           onZoneHover?.(null);
         }}
       >
-        <g className="zones">
-          {ZONES.map((z) => {
-            const agg = aggMap.get(`${z.basic}|${z.area}`);
-            const isHovered = hoveredZoneId === z.id;
-            return (
-              <path
-                key={z.id}
-                d={z.d}
-                fill={zoneFillColor(agg)}
-                fillRule={z.fillRule ?? 'nonzero'}
-                stroke={isHovered ? HOVER_STROKE : 'none'}
-                strokeWidth={isHovered ? 2.5 : 0}
-                shapeRendering="geometricPrecision"
-                onMouseEnter={(e) => {
-                  onZoneHover?.({ zone: z, agg });
-                  setTooltip({
-                    zone: z,
-                    agg,
-                    vx: e.clientX,
-                    vy: e.clientY,
-                  });
-                }}
-                onMouseMove={(e) => {
-                  setTooltip({
-                    zone: z,
-                    agg,
-                    vx: e.clientX,
-                    vy: e.clientY,
-                  });
-                }}
-              />
-            );
-          })}
-        </g>
+        {mode === 'heatmap' ? (
+          <g className="zones">
+            {ZONES.map((z) => {
+              const agg = aggMap.get(`${z.basic}|${z.area}`);
+              const isHovered = hoveredZoneId === z.id;
+              return (
+                <path
+                  key={z.id}
+                  d={z.d}
+                  fill={zoneFillColor(agg)}
+                  fillRule={z.fillRule ?? 'nonzero'}
+                  stroke={isHovered ? HOVER_STROKE : 'none'}
+                  strokeWidth={isHovered ? 2.5 : 0}
+                  shapeRendering="geometricPrecision"
+                  onMouseEnter={(e) => {
+                    onZoneHover?.({ zone: z, agg });
+                    setZoneTooltip({
+                      zone: z,
+                      agg,
+                      vx: e.clientX,
+                      vy: e.clientY,
+                    });
+                  }}
+                  onMouseMove={(e) => {
+                    setZoneTooltip({
+                      zone: z,
+                      agg,
+                      vx: e.clientX,
+                      vy: e.clientY,
+                    });
+                  }}
+                />
+              );
+            })}
+          </g>
+        ) : (
+          <g className="hexes">
+            {hexBins.map((bin) => {
+              const value = shotResultFilter === 'makes' ? bin.makes : bin.misses;
+              return (
+                <path
+                  key={`${bin.q},${bin.r}`}
+                  d={hexPath(bin.x, bin.y, HEX_RADIUS)}
+                  fill={hexFillColor(value, maxBinValue, shotResultFilter)}
+                  stroke="rgba(15,23,42,0.55)"
+                  strokeWidth={0.7}
+                  shapeRendering="geometricPrecision"
+                  onMouseEnter={(e) => {
+                    onZoneHover?.(null);
+                    setHexTooltip({
+                      bin,
+                      filter: shotResultFilter,
+                      vx: e.clientX,
+                      vy: e.clientY,
+                    });
+                  }}
+                  onMouseMove={(e) => {
+                    setHexTooltip({
+                      bin,
+                      filter: shotResultFilter,
+                      vx: e.clientX,
+                      vy: e.clientY,
+                    });
+                  }}
+                />
+              );
+            })}
+          </g>
+        )}
 
         <g
           className="court-lines"
@@ -149,70 +230,78 @@ export default function ShotChart({
           ))}
         </g>
 
-        <g className="labels pointer-events-none">
-          {ZONES.map((z) => {
-            const agg = aggMap.get(`${z.basic}|${z.area}`);
-            const fga = agg?.fga ?? 0;
-            const fgPct = agg && agg.fga > 0 ? agg.fgPct : null;
-            return (
-              <g key={`label-${z.id}`} transform={`translate(${z.textPos.x}, ${z.textPos.y})`}>
-                {/* Wide viewport avoids clipping; centered flex lays out a shrink-to-fit pill */}
-                <foreignObject
-                  x={-132}
-                  y={-52}
-                  width={264}
-                  height={104}
-                  overflow="visible"
-                  pointerEvents="none"
+        {mode === 'heatmap' && (
+          <g className="labels pointer-events-none">
+            {ZONES.map((z) => {
+              const agg = aggMap.get(`${z.basic}|${z.area}`);
+              const fga = agg?.fga ?? 0;
+              const fgPct = agg && agg.fga > 0 ? agg.fgPct : null;
+              return (
+                <g
+                  key={`label-${z.id}`}
+                  transform={`translate(${z.textPos.x}, ${z.textPos.y})`}
                 >
-                  <div className="flex h-full w-full items-center justify-center font-sans">
-                    <div
-                      className="rounded-md px-2 py-[3px] shadow-[0_1px_2px_rgba(0,0,0,0.75)] backdrop-blur-[1px]"
-                      style={{ background: 'rgba(0,0,0,0.48)', width: 'fit-content', maxWidth: '100%' }}
-                    >
-                      <div className="whitespace-nowrap text-center tabular-nums">
-                        <div className="text-[11px] font-bold leading-tight tracking-tight text-slate-50">
-                          {fga > 0 ? `${agg!.fgm}/${agg!.fga}` : '—'}
-                        </div>
-                        <div className="mt-px text-[10px] font-semibold leading-tight tracking-tight text-slate-200">
-                          {fmtPct(fgPct)}
+                  <foreignObject
+                    x={-132}
+                    y={-52}
+                    width={264}
+                    height={104}
+                    overflow="visible"
+                    pointerEvents="none"
+                  >
+                    <div className="flex h-full w-full items-center justify-center font-sans">
+                      <div
+                        className="rounded-md px-2 py-[3px] shadow-[0_1px_2px_rgba(0,0,0,0.75)] backdrop-blur-[1px]"
+                        style={{
+                          background: 'rgba(0,0,0,0.48)',
+                          width: 'fit-content',
+                          maxWidth: '100%',
+                        }}
+                      >
+                        <div className="whitespace-nowrap text-center tabular-nums">
+                          <div className="text-[11px] font-bold leading-tight tracking-tight text-slate-50">
+                            {fga > 0 ? `${agg!.fgm}/${agg!.fga}` : '—'}
+                          </div>
+                          <div className="mt-px text-[10px] font-semibold leading-tight tracking-tight text-slate-200">
+                            {fmtPct(fgPct)}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </foreignObject>
-              </g>
-            );
-          })}
-        </g>
+                  </foreignObject>
+                </g>
+              );
+            })}
+          </g>
+        )}
       </svg>
 
-      {tooltip &&
+      {zoneTooltip &&
         createPortal(
           <div
             className="pointer-events-none fixed z-[9999] rounded-md border border-white/10 bg-slate-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
-            style={{ left: tooltip.vx + 14, top: tooltip.vy + 14 }}
+            style={{ left: zoneTooltip.vx + 14, top: zoneTooltip.vy + 14 }}
           >
-            <div className="font-semibold text-white">{tooltip.zone.label}</div>
-            {tooltip.agg && tooltip.agg.fga > 0 ? (
+            <div className="font-semibold text-white">{zoneTooltip.zone.label}</div>
+            {zoneTooltip.agg && zoneTooltip.agg.fga > 0 ? (
               <div className="mt-1 space-y-0.5 text-slate-200">
                 <div>
-                  {tooltip.agg.fgm} / {tooltip.agg.fga} ·{' '}
+                  {zoneTooltip.agg.fgm} / {zoneTooltip.agg.fga} ·{' '}
                   <span className="font-semibold">
-                    {fmtPct(tooltip.agg.fgPct)}
+                    {fmtPct(zoneTooltip.agg.fgPct)}
                   </span>
                 </div>
                 <div className="text-slate-400">
-                  League: {fmtPct(tooltip.agg.leagueFgPct)}
-                  {tooltip.agg.fgPctDelta !== null && (
+                  League: {fmtPct(zoneTooltip.agg.leagueFgPct)}
+                  {zoneTooltip.agg.fgPctDelta !== null && (
                     <span
                       className={
-                        tooltip.agg.fgPctDelta >= 0
+                        zoneTooltip.agg.fgPctDelta >= 0
                           ? 'ml-2 text-emerald-400'
                           : 'ml-2 text-rose-400'
                       }
                     >
-                      {fmtSignedPp(tooltip.agg.fgPctDelta)}
+                      {fmtSignedPp(zoneTooltip.agg.fgPctDelta)}
                     </span>
                   )}
                 </div>
@@ -224,7 +313,36 @@ export default function ShotChart({
           document.body,
         )}
 
-      <Legend uid={uid} />
+      {hexTooltip &&
+        createPortal(
+          <div
+            className="pointer-events-none fixed z-[9999] rounded-md border border-white/10 bg-slate-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
+            style={{ left: hexTooltip.vx + 14, top: hexTooltip.vy + 14 }}
+          >
+            <div className="font-semibold text-white">
+              {hexTooltip.filter === 'makes' ? 'Made shots' : 'Missed shots'}
+            </div>
+            <div className="mt-1 text-slate-200">
+              {hexTooltip.filter === 'makes'
+                ? `${hexTooltip.bin.makes} makes`
+                : `${hexTooltip.bin.misses} misses`}
+            </div>
+            <div className="text-slate-400">{hexTooltip.bin.total} total attempts</div>
+          </div>,
+          document.body,
+        )}
+
+      {mode === 'heatmap' ? (
+        <Legend uid={uid} />
+      ) : (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <HexLegend uid={uid} filter={shotResultFilter} />
+          <ShotResultToggle
+            value={shotResultFilter}
+            onChange={onShotResultFilterChange}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -267,4 +385,198 @@ function Legend({ uid }: { uid: string }) {
       </span>
     </div>
   );
+}
+
+function HexLegend({
+  uid,
+  filter,
+}: {
+  uid: string;
+  filter: ShotResultFilter;
+}) {
+  const gradId = `${uid}-hex-legend-grad`;
+  const start = '#334155';
+  const end = filter === 'makes' ? '#00e676' : '#ff1f4b';
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+      <span className="shrink-0">
+        {filter === 'makes' ? 'made shots per hex' : 'missed shots per hex'}
+      </span>
+      <span className="shrink-0 text-slate-500">Low</span>
+      <svg viewBox="0 0 200 14" className="h-3 w-48 shrink-0">
+        <defs>
+          <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0%" stopColor={start} />
+            <stop offset="100%" stopColor={end} />
+          </linearGradient>
+        </defs>
+        <rect
+          x={0}
+          y={0}
+          width={200}
+          height={14}
+          fill={`url(#${gradId})`}
+          rx={3}
+          ry={3}
+        />
+      </svg>
+      <span
+        className={`shrink-0 ${
+          filter === 'makes' ? 'text-emerald-300/90' : 'text-rose-300/90'
+        }`}
+      >
+        High
+      </span>
+    </div>
+  );
+}
+
+function ShotResultToggle({
+  value,
+  onChange,
+}: {
+  value: ShotResultFilter;
+  onChange?: (filter: ShotResultFilter) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-white/10 bg-slate-900/60 p-1 text-xs sm:text-sm">
+      <ToggleButton
+        active={value === 'makes'}
+        label="Makes"
+        onClick={() => onChange?.('makes')}
+      />
+      <ToggleButton
+        active={value === 'misses'}
+        label="Misses"
+        onClick={() => onChange?.('misses')}
+      />
+    </div>
+  );
+}
+
+function ToggleButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md px-3 py-1.5 transition ${
+        active ? 'bg-white font-medium text-slate-900' : 'text-slate-300 hover:text-white'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function hexFillColor(
+  value: number,
+  maxValue: number,
+  filter: ShotResultFilter,
+): string {
+  if (value <= 0 || maxValue <= 0) {
+    return 'rgba(255,255,255,0.05)';
+  }
+  const t = Math.min(1, value / maxValue);
+  return filter === 'makes'
+    ? d3.interpolateRgb('#334155', '#00e676')(t)
+    : d3.interpolateRgb('#334155', '#ff1f4b')(t);
+}
+
+function hexPath(cx: number, cy: number, radius: number): string {
+  const points: [number, number][] = [];
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (Math.PI / 180) * (60 * i - 30);
+    points.push([cx + radius * Math.cos(angle), cy + radius * Math.sin(angle)]);
+  }
+  return `M ${points.map(([x, y]) => `${x},${y}`).join(' L ')} Z`;
+}
+
+function buildHexBins(
+  shots: Shot[],
+  filter: ShotResultFilter,
+  radius: number,
+): HexBin[] {
+  const bins = new Map<string, HexBin>();
+  for (const shot of shots) {
+    if (filter === 'makes' && !shot.made) continue;
+    if (filter === 'misses' && shot.made) continue;
+
+    const [x, y] = toSvg(shot.locX, shot.locY);
+    if (
+      x < -COURT.sidelineX ||
+      x > COURT.sidelineX ||
+      y < COURT.halfCourtY ||
+      y > COURT.baselineY
+    ) {
+      continue;
+    }
+
+    const axial = pointToAxial(x, y, radius);
+    const key = `${axial.q},${axial.r}`;
+    const center = axialToPoint(axial.q, axial.r, radius);
+    const existing = bins.get(key);
+    if (existing) {
+      existing.total += 1;
+      if (shot.made) existing.makes += 1;
+      else existing.misses += 1;
+      continue;
+    }
+    bins.set(key, {
+      q: axial.q,
+      r: axial.r,
+      x: center.x,
+      y: center.y,
+      total: 1,
+      makes: shot.made ? 1 : 0,
+      misses: shot.made ? 0 : 1,
+    });
+  }
+  return Array.from(bins.values());
+}
+
+function pointToAxial(x: number, y: number, size: number): { q: number; r: number } {
+  const q = (SQRT_3 / 3 * x - (1 / 3) * y) / size;
+  const r = ((2 / 3) * y) / size;
+  return roundAxial(q, r);
+}
+
+function axialToPoint(q: number, r: number, size: number): { x: number; y: number } {
+  return {
+    x: size * SQRT_3 * (q + r / 2),
+    y: size * 1.5 * r,
+  };
+}
+
+function roundAxial(q: number, r: number): { q: number; r: number } {
+  let x = q;
+  let z = r;
+  let y = -x - z;
+
+  let rx = Math.round(x);
+  let ry = Math.round(y);
+  let rz = Math.round(z);
+
+  const xDiff = Math.abs(rx - x);
+  const yDiff = Math.abs(ry - y);
+  const zDiff = Math.abs(rz - z);
+
+  if (xDiff > yDiff && xDiff > zDiff) {
+    rx = -ry - rz;
+  } else if (yDiff > zDiff) {
+    ry = -rx - rz;
+  } else {
+    rz = -rx - ry;
+  }
+
+  x = rx;
+  z = rz;
+  return { q: x, r: z };
 }
