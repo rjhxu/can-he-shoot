@@ -385,10 +385,11 @@ def upsert_shots(
     supabase: Client,
     shots: List[Dict[str, Any]],
     batch_size: int = SUPABASE_SHOTS_BATCH,
-) -> None:
+) -> int:
+    """Returns number of rows upserted after deduplication by shot_id."""
     if not shots:
         print("[supabase] No shots to upsert for this player.", flush=True)
-        return
+        return 0
 
     incoming = len(shots)
     shots = _dedupe_shots_last_wins(shots)
@@ -414,6 +415,7 @@ def upsert_shots(
         if idx % 20 == 0 or idx == len(batches):
             print(f"[supabase] Progress: {total}/{len(shots)} shot rows committed.", flush=True)
     print(f"[supabase] Upserted {total} shot rows.", flush=True)
+    return total
 
 
 def parse_args() -> argparse.Namespace:
@@ -475,8 +477,7 @@ def main() -> int:
                 flush=True,
             )
 
-        upsert_shots(supabase, filtered_shots)
-        shots_upsert_count = len(filtered_shots)
+        shots_upsert_count = upsert_shots(supabase, filtered_shots)
 
     print(
         f"[done] Finished scraping season={args.season} season_type='{args.season_type}'. "
