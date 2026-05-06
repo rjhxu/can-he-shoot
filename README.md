@@ -1,8 +1,18 @@
 # can-he-shoot
 
-A Next.js app that renders an interactive zone heatmap for active NBA players.
-The web app now reads from Supabase tables (`nba_players`, `nba_shots`) while a
-Python scraper syncs fresh data from `stats.nba.com`.
+A Next.js app that renders interactive NBA shot maps for active players. The app
+reads from Supabase tables (`nba_players`, `nba_shots`) while a Python scraper
+syncs fresh data from `stats.nba.com`.
+
+## What the app shows
+
+- Player search across active NBA players
+- Season-type filter (`Regular Season` / `Playoffs`)
+- Map-mode toggle:
+  - **Heatmap**: zone-level FG% vs league average coloring
+  - **Shot Chart**: hexbin density view over the same half-court geometry
+- Shot-chart result filter (`Makes` / `Misses`) shown next to the shot-chart legend
+- Zone/hex hover tooltips and a right-side summary panel with shooting totals
 
 ## Stack
 
@@ -28,6 +38,9 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+If localhost cannot read Supabase but deployment works, verify your terminal is
+not overriding `.env` with stale exported `SUPABASE_*` variables.
 
 ## Data sync scraper
 
