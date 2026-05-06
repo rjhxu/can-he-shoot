@@ -39,6 +39,8 @@ The scraper is intentionally stingy toward `stats.nba.com`:
 
 There is **no per-player shot loop**, so this will not hammer the API hundreds of times per run. Retries only happen on transient errors (still bounded).
 
+League-wide shot rows are **filtered** to `person_id`s that exist in `nba_players` before upsert, so inserts respect a foreign key from `nba_shots` → `nba_players` (some chart rows are for players not on the synced active roster).
+
 Install Python deps:
 
 ```bash

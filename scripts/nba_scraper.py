@@ -261,6 +261,27 @@ def upsert_players(supabase: Client, players: List[Dict[str, Any]], batch_size: 
     print(f"[supabase] Upserted {total} player rows.", flush=True)
 
 
+def _known_person_ids(supabase: Client) -> set[int]:
+    """person_ids present in nba_players (required when nba_shots.person_id has an FK there)."""
+    ids: set[int] = set()
+    page_size = 1000
+    start = 0
+    while True:
+        res = (
+            supabase.table("nba_players")
+            .select("person_id")
+            .range(start, start + page_size - 1)
+            .execute()
+        )
+        rows = res.data or []
+        for row in rows:
+            ids.add(int(row["person_id"]))
+        if len(rows) < page_size:
+            break
+        start += page_size
+    return ids
+
+
 def upsert_shots(supabase: Client, shots: List[Dict[str, Any]], batch_size: int = 500) -> None:
     if not shots:
         print("[supabase] No shots to upsert for this player.", flush=True)
@@ -294,6 +315,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     supabase = _supabase_client()
+    shots_upsert_count = 0
 
     with requests.Session() as session:
         players: List[Dict[str, Any]] = []
@@ -312,11 +334,31 @@ def main() -> int:
             season=args.season,
             season_type=args.season_type,
         )
-        upsert_shots(supabase, league_shots)
+
+        allowed_ids = _known_person_ids(supabase)
+        if not allowed_ids:
+            print(
+                "[shots] nba_players is empty — cannot upsert shots (foreign key). "
+                "Run `python scripts/nba_scraper.py --mode players` first.",
+                flush=True,
+            )
+            return 1
+
+        filtered_shots = [s for s in league_shots if int(s.get("person_id") or 0) in allowed_ids]
+        dropped = len(league_shots) - len(filtered_shots)
+        if dropped:
+            print(
+                f"[shots] Dropping {dropped} rows whose person_id is not in nba_players "
+                f"(league chart includes shooters outside the synced active roster).",
+                flush=True,
+            )
+
+        upsert_shots(supabase, filtered_shots)
+        shots_upsert_count = len(filtered_shots)
 
     print(
         f"[done] Finished scraping season={args.season} season_type='{args.season_type}'. "
-        f"League-wide shots upserted={len(league_shots)}.",
+        f"League-wide shots upserted={shots_upsert_count}.",
         flush=True,
     )
     return 0
