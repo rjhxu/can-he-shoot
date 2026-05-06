@@ -34,12 +34,20 @@ Open [http://localhost:3000](http://localhost:3000).
 The scraper is intentionally stingy toward `stats.nba.com`:
 
 - **`--mode players`**: **1** NBA request (`commonallplayers`)
-- **`--mode shots`**: **1** NBA request (`shotchartdetail`, league-wide `PlayerID=0`)
-- **`--mode all`**: **2** NBA requests total, with a **random 2–6s** pause between them
+- **`--mode shots`**: **1** NBA request (`shotchartdetail`, league-wide `PlayerID=0`; `--season-type` chooses RS vs PO)
+- **`--mode all`**: **3** NBA requests (roster, then RS chart, then PO chart — **2–6s** jitter between successive calls)
 
 There is **no per-player shot loop**, so this will not hammer the API hundreds of times per run. Retries only happen on transient errors (still bounded).
 
 League-wide shot rows are **filtered** to `person_id`s that exist in `nba_players` before upsert, so inserts respect a foreign key from `nba_shots` → `nba_players` (some chart rows are for players not on the synced active roster).
+
+Each shot row carries `season_type` (`Regular Season` or `Playoffs`). **Before syncing**, ensure the column exists in Supabase:
+
+```bash
+# Or paste scripts/sql/add_nba_shots_season_type.sql into the Supabase SQL editor
+```
+
+Regular-season `shot_id` values stay compatible with older rows; playoffs use a `po_…` prefix on `shot_id` so playoffs don’t collide with regular season.
 
 Install Python deps:
 
@@ -56,8 +64,9 @@ python scripts/nba_scraper.py --mode all
 # Players only
 python scripts/nba_scraper.py --mode players
 
-# Shots only (one league-wide shotchartdetail call; PlayerID=0, TeamID=0)
+# Shots only (one NBA call per invocation; defaults to Regular Season)
 python scripts/nba_scraper.py --mode shots
+python scripts/nba_scraper.py --mode shots --season-type Playoffs
 ```
 
 Other useful flags:
@@ -75,8 +84,9 @@ instead of duplicating them.
 Workflow file: `.github/workflows/nba_sync.yml`
 
 - Triggered by schedule and `workflow_dispatch`
-- Shots job runs daily; players job runs weekly (each job makes **exactly 1** NBA request — see scraper section above)
-- Manual dispatch runs **both** jobs, often in parallel (two runners ≈ two near-simultaneous NBA calls; use rerun on a single job if you want only one)
+- Shots job runs daily: **regular season** then **playoffs** (**2** sequential NBA requests on the runner)
+- Players job runs weekly (**1** NBA request)
+- Manual dispatch starts both jobs **in parallel** (players runner + shots runner ≈ simultaneous hits to `stats.nba.com`; the shots runner still does RS then PO sequentially)
 - Both jobs read:
   - `secrets.SUPABASE_URL`
   - `secrets.SUPABASE_SERVICE_ROLE_KEY`

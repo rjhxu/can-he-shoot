@@ -48,5 +48,8 @@ jobs:
       - name: Install scraper dependencies
         run: python -m pip install --upgrade pip && pip install -r scripts/requirements.txt
 
-      - name: Run shot sync
-        run: python scripts/nba_scraper.py --mode shots
+      - name: Sync regular-season shots
+        run: python scripts/nba_scraper.py --mode shots --season-type "Regular Season"
+
+      - name: Sync playoff shots
+        run: python scripts/nba_scraper.py --mode shots --season-type Playoffs

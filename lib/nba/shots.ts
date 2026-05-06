@@ -17,6 +17,7 @@ export interface ShotsPayload {
 
 async function fetchSingleSeasonType(
   playerId: number,
+  seasonType: SeasonType,
 ): Promise<{ shots: Shot[]; leagueAverages: LeagueZoneAverage[] }> {
   const supabase = getSupabaseServerClient();
 
@@ -26,6 +27,7 @@ async function fetchSingleSeasonType(
       'game_id, game_date, period, minutes_remaining, seconds_remaining, action_type, shot_type, shot_zone_basic, shot_zone_area, shot_zone_range, shot_distance, loc_x, loc_y, shot_made_flag',
     )
     .eq('person_id', playerId)
+    .eq('season_type', seasonType)
     .order('game_date', { ascending: false });
 
   if (shotError) {
@@ -51,7 +53,8 @@ async function fetchSingleSeasonType(
 
   const { data: leagueRows, error: leagueError } = await supabase
     .from('nba_shots')
-    .select('shot_zone_basic, shot_zone_area, shot_zone_range, shot_made_flag');
+    .select('shot_zone_basic, shot_zone_area, shot_zone_range, shot_made_flag')
+    .eq('season_type', seasonType);
 
   if (leagueError) {
     throw new Error(
@@ -88,7 +91,7 @@ export async function getShots(
 ): Promise<ShotsPayload> {
   const cacheKey = `nba_shots_${playerId}_${seasonType}`;
   const cachedGetter = unstable_cache(
-    async () => fetchSingleSeasonType(playerId),
+    async () => fetchSingleSeasonType(playerId, seasonType),
     [cacheKey],
     { revalidate: 1_800 },
   );
