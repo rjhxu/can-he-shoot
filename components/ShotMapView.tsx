@@ -3,7 +3,11 @@
 import { useEffect, useState } from 'react';
 import PlayerSearch from './PlayerSearch';
 import SeasonTypeToggle from './SeasonTypeToggle';
-import ShotChart, { type ZoneHoverPayload } from './ShotChart';
+import ShotChart, {
+  type ShotChartMode,
+  type ShotResultFilter,
+  type ZoneHoverPayload,
+} from './ShotChart';
 import { computeTotals, type ShootingTotals } from '@/lib/aggregate';
 import { fmtPct, fmtSignedPp } from '@/lib/formatShot';
 import {
@@ -42,6 +46,9 @@ interface ShotsResponse {
 export default function ShotMapView({ players, defaultPlayer }: Props) {
   const [selected, setSelected] = useState<Player | null>(defaultPlayer ?? null);
   const [seasonType, setSeasonType] = useState<SeasonType>('Regular Season');
+  const [mapMode, setMapMode] = useState<ShotChartMode>('heatmap');
+  const [shotResultFilter, setShotResultFilter] =
+    useState<ShotResultFilter>('makes');
   const [data, setData] = useState<ShotsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +100,16 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
             onSelect={setSelected}
           />
         </div>
-        <SeasonTypeToggle value={seasonType} onChange={setSeasonType} />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <MapModeToggle value={mapMode} onChange={setMapMode} />
+          {mapMode === 'shotchart' && (
+            <ShotResultToggle
+              value={shotResultFilter}
+              onChange={setShotResultFilter}
+            />
+          )}
+          <SeasonTypeToggle value={seasonType} onChange={setSeasonType} />
+        </div>
       </header>
 
       <section className="grid items-start gap-6 lg:grid-cols-[1fr_300px]">
@@ -111,6 +127,8 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
               shots={data.shots}
               leagueAverages={data.leagueAverages}
               zones={data.zones}
+              mode={mapMode}
+              shotResultFilter={shotResultFilter}
               hoveredZoneId={hoveredZone?.zone.id ?? null}
               onZoneHover={setHoveredZone}
             />
@@ -121,6 +139,7 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
           <SidePanel
             player={selected}
             seasonType={seasonType}
+            mapMode={mapMode}
             shots={data?.shots ?? []}
             totals={totals}
             hoveredZone={hoveredZone}
@@ -135,6 +154,7 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
 function SidePanel({
   player,
   seasonType,
+  mapMode,
   shots,
   totals,
   hoveredZone,
@@ -142,6 +162,7 @@ function SidePanel({
 }: {
   player: Player | null;
   seasonType: SeasonType;
+  mapMode: ShotChartMode;
   shots: Shot[];
   totals: ShootingTotals | null;
   hoveredZone: ZoneHoverPayload | null;
@@ -232,11 +253,79 @@ function SidePanel({
         />
       </div>
       <p className="text-xs text-slate-500">
-        Colors compare each zone’s FG% to the league average for that zone
-        (green above, red below). Hover the court to highlight a zone and see
-        details here; the chart tooltip shows the same numbers.
+        {mapMode === 'heatmap'
+          ? 'Colors compare each zone’s FG% to the league average for that zone (green above, red below). Hover the court to highlight a zone and see details here; the chart tooltip shows the same numbers.'
+          : 'Hexes show where shots happen most often. In Makes view, stronger green means more made shots in that area; in Misses view, deeper red means more misses.'}
       </p>
     </div>
+  );
+}
+
+function MapModeToggle({
+  value,
+  onChange,
+}: {
+  value: ShotChartMode;
+  onChange: (mode: ShotChartMode) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-white/10 bg-slate-900/60 p-1 text-sm">
+      <ToggleButton
+        active={value === 'heatmap'}
+        label="Heatmap"
+        onClick={() => onChange('heatmap')}
+      />
+      <ToggleButton
+        active={value === 'shotchart'}
+        label="Shot Chart"
+        onClick={() => onChange('shotchart')}
+      />
+    </div>
+  );
+}
+
+function ShotResultToggle({
+  value,
+  onChange,
+}: {
+  value: ShotResultFilter;
+  onChange: (filter: ShotResultFilter) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-white/10 bg-slate-900/60 p-1 text-sm">
+      <ToggleButton
+        active={value === 'makes'}
+        label="Makes"
+        onClick={() => onChange('makes')}
+      />
+      <ToggleButton
+        active={value === 'misses'}
+        label="Misses"
+        onClick={() => onChange('misses')}
+      />
+    </div>
+  );
+}
+
+function ToggleButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md px-3 py-1.5 transition ${
+        active ? 'bg-white font-medium text-slate-900' : 'text-slate-300 hover:text-white'
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 
