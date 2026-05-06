@@ -6,7 +6,8 @@ stats.nba.com HTTP usage (minimal by design — no per-player shot loops):
 
   --mode players  -> 1 request (commonallplayers)
   --mode shots    -> 1 request (shotchartdetail, league-wide; --season-type picks RS vs PO)
-  --mode all      -> 1 commonallplayers + 2 shotchartdetail (always RS then PO)
+  --mode all      -> 1 commonallplayers + 4 shotchartdetail
+                    (RS split Oct-Dec, Jan-Feb, Mar-Apr; then PO)
 
 Retries only occur on transient 429/5xx or errors (bounded by MAX_RETRIES).
 
@@ -18,6 +19,7 @@ Usage examples:
 from __future__ import annotations
 
 import argparse
+import calendar
 import os
 import random
 import sys
@@ -198,14 +200,16 @@ def fetch_shots(
     player_id: int,
     season: str = DEFAULT_SEASON,
     season_type: str = DEFAULT_SEASON_TYPE,
+    date_from: str = "",
+    date_to: str = "",
 ) -> List[Dict[str, Any]]:
     params = {
         "AheadBehind": "",
         "ClutchTime": "",
         "ContextFilter": "",
         "ContextMeasure": "FGA",
-        "DateFrom": "",
-        "DateTo": "",
+        "DateFrom": date_from,
+        "DateTo": date_to,
         "EndPeriod": 0,
         "EndRange": 28800,
         "GameID": "",
@@ -266,6 +270,49 @@ def fetch_shots(
         flush=True,
     )
     return shots
+
+
+def _season_years(season: str) -> tuple[int, int]:
+    """Convert '2025-26' or '2025-2026' into (2025, 2026)."""
+    try:
+        start_raw, end_raw = season.split("-")
+        start_year = int(start_raw)
+        if len(end_raw) == 2:
+            century = (start_year // 100) * 100
+            end_year = century + int(end_raw)
+        else:
+            end_year = int(end_raw)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(
+            f"Invalid season format '{season}'. Expected e.g. '2025-26'."
+        ) from exc
+    return start_year, end_year
+
+
+def _regular_season_windows(season: str) -> List[Dict[str, str]]:
+    """Fixed regular-season windows for league-wide ingestion."""
+    start_year, end_year = _season_years(season)
+    feb_last_day = calendar.monthrange(end_year, 2)[1]
+    return [
+        {
+            "label": "Regular Season (Oct-Dec)",
+            "season_type": "Regular Season",
+            "date_from": f"10/01/{start_year}",
+            "date_to": f"12/31/{start_year}",
+        },
+        {
+            "label": "Regular Season (Jan-Feb)",
+            "season_type": "Regular Season",
+            "date_from": f"01/01/{end_year}",
+            "date_to": f"02/{feb_last_day:02d}/{end_year}",
+        },
+        {
+            "label": "Regular Season (Mar-Apr)",
+            "season_type": "Regular Season",
+            "date_from": f"03/01/{end_year}",
+            "date_to": f"04/30/{end_year}",
+        },
+    ]
 
 
 def _chunk(items: List[Dict[str, Any]], size: int) -> Iterable[List[Dict[str, Any]]]:
@@ -438,7 +485,7 @@ def parse_args() -> argparse.Namespace:
         choices=["Regular Season", "Playoffs"],
         help=(
             f"Shot-chart season segment (default: {DEFAULT_SEASON_TYPE}). "
-            "Used by --mode shots only; --mode all always pulls Regular Season plus Playoffs."
+            "Used by --mode shots only; --mode all pulls three Regular Season windows plus Playoffs."
         ),
     )
     return parser.parse_args()
@@ -459,12 +506,6 @@ def main() -> int:
             print(f"[done] Finished players-only sync for season={args.season}.", flush=True)
             return 0
 
-        shot_types: tuple[str, ...] = (
-            ("Regular Season", "Playoffs")
-            if args.mode == "all"
-            else (args.season_type,)
-        )
-
         allowed_ids = _known_person_ids(supabase)
         if not allowed_ids:
             print(
@@ -474,16 +515,48 @@ def main() -> int:
             )
             return 1
 
-        for st_label in shot_types:
+        shot_windows: List[Dict[str, str]]
+        if args.mode == "all":
+            shot_windows = _regular_season_windows(args.season) + [
+                {
+                    "label": "Playoffs",
+                    "season_type": "Playoffs",
+                    "date_from": "",
+                    "date_to": "",
+                }
+            ]
+        else:
+            shot_windows = [
+                {
+                    "label": args.season_type,
+                    "season_type": args.season_type,
+                    "date_from": "",
+                    "date_to": "",
+                }
+            ]
+
+        for window in shot_windows:
+            st_label = window["label"]
+            st_type = window["season_type"]
+            date_from = window["date_from"]
+            date_to = window["date_to"]
+            date_scope = (
+                f", date window {date_from} -> {date_to}"
+                if date_from and date_to
+                else ""
+            )
             print(
-                f"[run] League-wide shot sync — {st_label} (shotchartdetail PlayerID=0, TeamID=0).",
+                f"[run] League-wide shot sync — {st_label} "
+                f"(shotchartdetail PlayerID=0, TeamID=0{date_scope}).",
                 flush=True,
             )
             league_shots = fetch_shots(
                 session=session,
                 player_id=0,
                 season=args.season,
-                season_type=st_label,
+                season_type=st_type,
+                date_from=date_from,
+                date_to=date_to,
             )
 
             filtered_shots = [s for s in league_shots if int(s.get("person_id") or 0) in allowed_ids]

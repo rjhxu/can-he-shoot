@@ -31,20 +31,25 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Data sync scraper
 
-The scraper is intentionally stingy toward `stats.nba.com`:
+NBA request profile by mode:
 
 - **`--mode players`**: **1** NBA request (`commonallplayers`)
 - **`--mode shots`**: **1** NBA request (`shotchartdetail`, league-wide `PlayerID=0`; `--season-type` chooses RS vs PO)
-- **`--mode all`**: **3** NBA requests (roster, then RS chart, then PO chart — **2–6s** jitter between successive calls)
+- **`--mode all`**: **5** NBA requests (players + three Regular Season windows + Playoffs)
+  - Regular Season window 1: Oct-Dec
+  - Regular Season window 2: Jan-Feb
+  - Regular Season window 3: Mar-Apr
+  - Playoffs: full playoffs query
 
-There is **no per-player shot loop**, so this will not hammer the API hundreds of times per run. Retries only happen on transient errors (still bounded).
+The scraper waits **2–6s** between NBA requests and retries transient errors with bounded backoff.
+There is **no per-player shot loop**.
 
 League-wide shot rows are **filtered** to `person_id`s that exist in `nba_players` before upsert, so inserts respect a foreign key from `nba_shots` → `nba_players` (some chart rows are for players not on the synced active roster).
 
-Each shot row carries `season_type` (`Regular Season` or `Playoffs`). **Before syncing**, ensure the column exists in Supabase:
+Each shot row carries `season_type` (`Regular Season` or `Playoffs`). Before syncing, ensure the column exists in Supabase:
 
 ```bash
-# Or paste scripts/sql/add_nba_shots_season_type.sql into the Supabase SQL editor
+# Paste scripts/sql/add_nba_shots_season_type.sql into the Supabase SQL editor
 ```
 
 Regular-season `shot_id` values stay compatible with older rows; playoffs use a `po_…` prefix on `shot_id` so playoffs don’t collide with regular season.
@@ -86,7 +91,7 @@ Workflow file: `.github/workflows/nba_sync.yml`
 - Triggered by schedule and `workflow_dispatch`
 - Shots job runs daily: **regular season** then **playoffs** (**2** sequential NBA requests on the runner)
 - Players job runs weekly (**1** NBA request)
-- Manual dispatch starts both jobs **in parallel** (players runner + shots runner ≈ simultaneous hits to `stats.nba.com`; the shots runner still does RS then PO sequentially)
+- `workflow_dispatch` can run both jobs in the same workflow run (players and shots are separate jobs)
 - Both jobs read:
   - `secrets.SUPABASE_URL`
   - `secrets.SUPABASE_SERVICE_ROLE_KEY`
