@@ -7,6 +7,76 @@ import type {
 } from './types';
 
 const SEASON = '2025-26';
+const SHOTS_PAGE_SIZE = 1_000;
+
+async function fetchAllPlayerShots(
+  playerId: number,
+  seasonType: SeasonType,
+): Promise<
+  Array<{
+    game_id: string | null;
+    game_date: string | null;
+    period: number | null;
+    minutes_remaining: number | null;
+    seconds_remaining: number | null;
+    action_type: string | null;
+    shot_type: string | null;
+    shot_zone_basic: string | null;
+    shot_zone_area: string | null;
+    shot_zone_range: string | null;
+    shot_distance: number | null;
+    loc_x: number | null;
+    loc_y: number | null;
+    shot_made_flag: number | null;
+  }>
+> {
+  const supabase = getSupabaseServerClient();
+  const allRows: Array<{
+    game_id: string | null;
+    game_date: string | null;
+    period: number | null;
+    minutes_remaining: number | null;
+    seconds_remaining: number | null;
+    action_type: string | null;
+    shot_type: string | null;
+    shot_zone_basic: string | null;
+    shot_zone_area: string | null;
+    shot_zone_range: string | null;
+    shot_distance: number | null;
+    loc_x: number | null;
+    loc_y: number | null;
+    shot_made_flag: number | null;
+  }> = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + SHOTS_PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from('nba_shots')
+      .select(
+        'game_id, game_date, period, minutes_remaining, seconds_remaining, action_type, shot_type, shot_zone_basic, shot_zone_area, shot_zone_range, shot_distance, loc_x, loc_y, shot_made_flag',
+      )
+      .eq('person_id', playerId)
+      .eq('season_type', seasonType)
+      .order('game_date', { ascending: false })
+      .range(from, to);
+
+    if (error) {
+      throw new Error(`Failed to fetch shots from Supabase: ${error.message}`);
+    }
+
+    const rows = data ?? [];
+    allRows.push(...rows);
+
+    if (rows.length < SHOTS_PAGE_SIZE) {
+      break;
+    }
+
+    from += SHOTS_PAGE_SIZE;
+  }
+
+  return allRows;
+}
 
 export interface ShotsPayload {
   shots: Shot[];
@@ -20,19 +90,7 @@ async function fetchSingleSeasonType(
   seasonType: SeasonType,
 ): Promise<{ shots: Shot[]; leagueAverages: LeagueZoneAverage[] }> {
   const supabase = getSupabaseServerClient();
-
-  const { data: shotRows, error: shotError } = await supabase
-    .from('nba_shots')
-    .select(
-      'game_id, game_date, period, minutes_remaining, seconds_remaining, action_type, shot_type, shot_zone_basic, shot_zone_area, shot_zone_range, shot_distance, loc_x, loc_y, shot_made_flag',
-    )
-    .eq('person_id', playerId)
-    .eq('season_type', seasonType)
-    .order('game_date', { ascending: false });
-
-  if (shotError) {
-    throw new Error(`Failed to fetch shots from Supabase: ${shotError.message}`);
-  }
+  const shotRows = await fetchAllPlayerShots(playerId, seasonType);
 
   const shots: Shot[] = (shotRows ?? []).map((row) => ({
     gameId: String(row.game_id ?? ''),

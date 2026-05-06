@@ -115,3 +115,5 @@ Workflow file: `.github/workflows/nba_sync.yml`
 Browser -> /api/players          -> Supabase nba_players (revalidate 24h)
 Browser -> /api/shots/[playerId] -> Supabase nba_shots   (revalidate 30m)
 ```
+
+`/api/shots/[playerId]` paginates Supabase reads in 1000-row chunks so players with more than 1000 attempts still return full shot totals.
