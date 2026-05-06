@@ -298,6 +298,14 @@ def parse_args() -> argparse.Namespace:
         help="Optional comma-separated player IDs. If omitted, all active players are processed.",
     )
     parser.add_argument(
+        "--league-wide",
+        action="store_true",
+        help=(
+            "Fetch shot data league-wide in a single shotchartdetail call "
+            "(PlayerID=0, TeamID=0)."
+        ),
+    )
+    parser.add_argument(
         "--max-players",
         type=int,
         default=0,
@@ -318,6 +326,25 @@ def main() -> int:
 
         if args.mode == "players":
             print(f"[done] Finished players-only sync for season={args.season}.", flush=True)
+            return 0
+
+        if args.league_wide:
+            print(
+                "[run] Using league-wide shot fetch (PlayerID=0, TeamID=0).",
+                flush=True,
+            )
+            league_shots = fetch_shots(
+                session=session,
+                player_id=0,
+                season=args.season,
+                season_type=args.season_type,
+            )
+            upsert_shots(supabase, league_shots)
+            print(
+                f"[done] Finished league-wide shots sync season={args.season} "
+                f"season_type='{args.season_type}' shots={len(league_shots)}.",
+                flush=True,
+            )
             return 0
 
         requested_player_ids = _parse_player_ids(args.player_ids)
