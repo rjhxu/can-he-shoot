@@ -33,6 +33,7 @@ interface Props {
   zones?: ZoneAggregate[];
   mode?: ShotChartMode;
   shotResultFilter?: ShotResultFilter;
+  onShotResultFilterChange?: (filter: ShotResultFilter) => void;
   hoveredZoneId?: string | null;
   onZoneHover?: (payload: ZoneHoverPayload | null) => void;
 }
@@ -85,7 +86,7 @@ function zoneFillColor(agg: ZoneAggregate | undefined): string {
 }
 
 const HOVER_STROKE = '#22d3ee';
-const HEX_RADIUS = 16;
+const HEX_RADIUS = 8;
 const SQRT_3 = Math.sqrt(3);
 
 export default function ShotChart({
@@ -94,6 +95,7 @@ export default function ShotChart({
   zones,
   mode = 'heatmap',
   shotResultFilter = 'makes',
+  onShotResultFilterChange,
   hoveredZoneId,
   onZoneHover,
 }: Props) {
@@ -183,7 +185,7 @@ export default function ShotChart({
                   d={hexPath(bin.x, bin.y, HEX_RADIUS)}
                   fill={hexFillColor(value, maxBinValue, shotResultFilter)}
                   stroke="rgba(15,23,42,0.55)"
-                  strokeWidth={1}
+                  strokeWidth={0.7}
                   shapeRendering="geometricPrecision"
                   onMouseEnter={(e) => {
                     onZoneHover?.(null);
@@ -333,7 +335,13 @@ export default function ShotChart({
       {mode === 'heatmap' ? (
         <Legend uid={uid} />
       ) : (
-        <HexLegend uid={uid} filter={shotResultFilter} />
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <HexLegend uid={uid} filter={shotResultFilter} />
+          <ShotResultToggle
+            value={shotResultFilter}
+            onChange={onShotResultFilterChange}
+          />
+        </div>
       )}
     </div>
   );
@@ -390,7 +398,7 @@ function HexLegend({
   const start = '#334155';
   const end = filter === 'makes' ? '#00e676' : '#ff1f4b';
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
       <span className="shrink-0">
         {filter === 'makes' ? 'made shots per hex' : 'missed shots per hex'}
       </span>
@@ -420,6 +428,51 @@ function HexLegend({
         High
       </span>
     </div>
+  );
+}
+
+function ShotResultToggle({
+  value,
+  onChange,
+}: {
+  value: ShotResultFilter;
+  onChange?: (filter: ShotResultFilter) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-white/10 bg-slate-900/60 p-1 text-xs sm:text-sm">
+      <ToggleButton
+        active={value === 'makes'}
+        label="Makes"
+        onClick={() => onChange?.('makes')}
+      />
+      <ToggleButton
+        active={value === 'misses'}
+        label="Misses"
+        onClick={() => onChange?.('misses')}
+      />
+    </div>
+  );
+}
+
+function ToggleButton({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md px-3 py-1.5 transition ${
+        active ? 'bg-white font-medium text-slate-900' : 'text-slate-300 hover:text-white'
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 

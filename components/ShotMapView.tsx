@@ -102,12 +102,6 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <MapModeToggle value={mapMode} onChange={setMapMode} />
-          {mapMode === 'shotchart' && (
-            <ShotResultToggle
-              value={shotResultFilter}
-              onChange={setShotResultFilter}
-            />
-          )}
           <SeasonTypeToggle value={seasonType} onChange={setSeasonType} />
         </div>
       </header>
@@ -129,6 +123,7 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
               zones={data.zones}
               mode={mapMode}
               shotResultFilter={shotResultFilter}
+              onShotResultFilterChange={setShotResultFilter}
               hoveredZoneId={hoveredZone?.zone.id ?? null}
               onZoneHover={setHoveredZone}
             />
@@ -279,29 +274,6 @@ function MapModeToggle({
         active={value === 'shotchart'}
         label="Shot Chart"
         onClick={() => onChange('shotchart')}
-      />
-    </div>
-  );
-}
-
-function ShotResultToggle({
-  value,
-  onChange,
-}: {
-  value: ShotResultFilter;
-  onChange: (filter: ShotResultFilter) => void;
-}) {
-  return (
-    <div className="inline-flex rounded-lg border border-white/10 bg-slate-900/60 p-1 text-sm">
-      <ToggleButton
-        active={value === 'makes'}
-        label="Makes"
-        onClick={() => onChange('makes')}
-      />
-      <ToggleButton
-        active={value === 'misses'}
-        label="Misses"
-        onClick={() => onChange('misses')}
       />
     </div>
   );
