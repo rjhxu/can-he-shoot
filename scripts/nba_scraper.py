@@ -2,10 +2,17 @@
 """
 Scrape NBA player and shot data from stats.nba.com and upsert into Supabase.
 
+stats.nba.com HTTP usage (minimal by design — no per-player shot loops):
+
+  --mode players  -> 1 request (commonallplayers)
+  --mode shots    -> 1 request (shotchartdetail, league-wide PlayerID=0 TeamID=0)
+  --mode all      -> 2 requests total (players, then shots; randomized delay between)
+
+Retries only occur on transient 429/5xx or errors (bounded by MAX_RETRIES).
+
 Usage examples:
   python scripts/nba_scraper.py
   python scripts/nba_scraper.py --season 2025-26 --season-type "Regular Season"
-  python scripts/nba_scraper.py --player-ids 2544,201939
 """
 
 from __future__ import annotations
@@ -26,7 +33,8 @@ DEFAULT_SEASON_TYPE = "Regular Season"
 DEFAULT_TIMEOUT_SECONDS = 20
 MAX_RETRIES = 3
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
-REQUEST_DELAY_RANGE_SECONDS = (1.0, 3.0)
+# Be conservative between NBA endpoints to reduce throttle / soft-ban risk on shared IPs.
+REQUEST_DELAY_RANGE_SECONDS = (2.0, 6.0)
 
 COMMON_HEADERS = {
     "Referer": "https://www.nba.com/",
@@ -265,18 +273,6 @@ def upsert_shots(supabase: Client, shots: List[Dict[str, Any]], batch_size: int 
     print(f"[supabase] Upserted {total} shot rows.", flush=True)
 
 
-def _parse_player_ids(raw_player_ids: Optional[str]) -> List[int]:
-    if not raw_player_ids:
-        return []
-    parsed: List[int] = []
-    for part in raw_player_ids.split(","):
-        value = part.strip()
-        if not value:
-            continue
-        parsed.append(int(value))
-    return parsed
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Scrape NBA data and upsert into Supabase.")
     parser.add_argument(
@@ -291,25 +287,6 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_SEASON_TYPE,
         choices=["Regular Season", "Playoffs"],
         help=f"Season type (default: {DEFAULT_SEASON_TYPE})",
-    )
-    parser.add_argument(
-        "--player-ids",
-        default="",
-        help="Optional comma-separated player IDs. If omitted, all active players are processed.",
-    )
-    parser.add_argument(
-        "--league-wide",
-        action="store_true",
-        help=(
-            "Fetch shot data league-wide in a single shotchartdetail call "
-            "(PlayerID=0, TeamID=0)."
-        ),
-    )
-    parser.add_argument(
-        "--max-players",
-        type=int,
-        default=0,
-        help="Optional limit for number of players to process (0 means no limit).",
     )
     return parser.parse_args()
 
@@ -328,54 +305,18 @@ def main() -> int:
             print(f"[done] Finished players-only sync for season={args.season}.", flush=True)
             return 0
 
-        if args.league_wide:
-            print(
-                "[run] Using league-wide shot fetch (PlayerID=0, TeamID=0).",
-                flush=True,
-            )
-            league_shots = fetch_shots(
-                session=session,
-                player_id=0,
-                season=args.season,
-                season_type=args.season_type,
-            )
-            upsert_shots(supabase, league_shots)
-            print(
-                f"[done] Finished league-wide shots sync season={args.season} "
-                f"season_type='{args.season_type}' shots={len(league_shots)}.",
-                flush=True,
-            )
-            return 0
-
-        requested_player_ids = _parse_player_ids(args.player_ids)
-        if requested_player_ids:
-            player_ids = requested_player_ids
-            print(f"[run] Using {len(player_ids)} explicit player IDs.", flush=True)
-        else:
-            if not players:
-                players = fetch_players(session=session, season=args.season)
-            player_ids = [int(player["person_id"]) for player in players]
-            print(f"[run] Using all active players ({len(player_ids)}).", flush=True)
-
-        if args.max_players and args.max_players > 0:
-            player_ids = player_ids[: args.max_players]
-            print(f"[run] Applying --max-players={args.max_players}.", flush=True)
-
-        total_shots = 0
-        for idx, player_id in enumerate(player_ids, start=1):
-            print(f"[run] ({idx}/{len(player_ids)}) Fetching shots for player {player_id}...", flush=True)
-            shots = fetch_shots(
-                session=session,
-                player_id=player_id,
-                season=args.season,
-                season_type=args.season_type,
-            )
-            upsert_shots(supabase, shots)
-            total_shots += len(shots)
+        print("[run] League-wide shot sync (shotchartdetail PlayerID=0, TeamID=0).", flush=True)
+        league_shots = fetch_shots(
+            session=session,
+            player_id=0,
+            season=args.season,
+            season_type=args.season_type,
+        )
+        upsert_shots(supabase, league_shots)
 
     print(
         f"[done] Finished scraping season={args.season} season_type='{args.season_type}'. "
-        f"Players processed={len(player_ids)}, total shots processed={total_shots}.",
+        f"League-wide shots upserted={len(league_shots)}.",
         flush=True,
     )
     return 0
