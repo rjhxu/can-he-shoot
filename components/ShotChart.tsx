@@ -36,6 +36,7 @@ interface Props {
   onShotResultFilterChange?: (filter: ShotResultFilter) => void;
   hoveredZoneId?: string | null;
   onZoneHover?: (payload: ZoneHoverPayload | null) => void;
+  onZoneSelect?: (payload: ZoneHoverPayload | null) => void;
 }
 
 interface ZoneTooltipHover {
@@ -64,6 +65,9 @@ interface HexTooltipHover {
 }
 
 /** Vibrant red (below league) -> neutral slate -> vibrant green (above league). */
+const MAKES_GREEN_START = '#166534';
+const MAKES_GREEN_END = '#00ff66';
+
 function colorForDelta(delta: number): string {
   const t = Math.max(
     0,
@@ -72,7 +76,7 @@ function colorForDelta(delta: number): string {
   if (t <= 0.5) {
     return d3.interpolateRgb('#ff1f4b', '#334155')(t / 0.5);
   }
-  return d3.interpolateRgb('#334155', '#00e676')((t - 0.5) / 0.5);
+  return d3.interpolateRgb('#334155', MAKES_GREEN_END)((t - 0.5) / 0.5);
 }
 
 function zoneFillColor(agg: ZoneAggregate | undefined): string {
@@ -98,6 +102,7 @@ export default function ShotChart({
   onShotResultFilterChange,
   hoveredZoneId,
   onZoneHover,
+  onZoneSelect,
 }: Props) {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const [zoneTooltip, setZoneTooltip] = useState<ZoneTooltipHover | null>(null);
@@ -171,6 +176,9 @@ export default function ShotChart({
                       vy: e.clientY,
                     });
                   }}
+                  onClick={() => {
+                    onZoneSelect?.({ zone: z, agg });
+                  }}
                 />
               );
             })}
@@ -189,6 +197,7 @@ export default function ShotChart({
                   shapeRendering="geometricPrecision"
                   onMouseEnter={(e) => {
                     onZoneHover?.(null);
+                    onZoneSelect?.(null);
                     setHexTooltip({
                       bin,
                       filter: shotResultFilter,
@@ -395,8 +404,8 @@ function HexLegend({
   filter: ShotResultFilter;
 }) {
   const gradId = `${uid}-hex-legend-grad`;
-  const start = '#334155';
-  const end = filter === 'makes' ? '#00e676' : '#ff1f4b';
+  const start = filter === 'makes' ? MAKES_GREEN_START : '#334155';
+  const end = filter === 'makes' ? MAKES_GREEN_END : '#ff1f4b';
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
       <span className="shrink-0">
@@ -486,7 +495,7 @@ function hexFillColor(
   }
   const t = Math.min(1, value / maxValue);
   return filter === 'makes'
-    ? d3.interpolateRgb('#334155', '#00e676')(t)
+    ? d3.interpolateRgb(MAKES_GREEN_START, MAKES_GREEN_END)(t)
     : d3.interpolateRgb('#334155', '#ff1f4b')(t);
 }
 

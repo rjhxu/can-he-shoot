@@ -53,9 +53,20 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hoveredZone, setHoveredZone] = useState<ZoneHoverPayload | null>(null);
+  const [selectedZone, setSelectedZone] = useState<ZoneHoverPayload | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)');
+    const sync = () => setIsMobile(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
 
   useEffect(() => {
     setHoveredZone(null);
+    setSelectedZone(null);
   }, [selected, seasonType]);
 
   useEffect(() => {
@@ -66,6 +77,7 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
     const ctrl = new AbortController();
     setLoading(true);
     setHoveredZone(null);
+    setSelectedZone(null);
     setError(null);
     const params = new URLSearchParams({ seasonType });
     fetch(`/api/shots/${selected.personId}?${params.toString()}`, {
@@ -91,8 +103,8 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
   const totals = data?.totals ?? (data ? computeTotals(data.shots) : null);
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-4 sm:gap-6">
+      <header className="flex flex-row flex-wrap items-center justify-between gap-2 sm:gap-3">
         <div className="flex-1">
           <PlayerSearch
             players={players}
@@ -100,13 +112,13 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
             onSelect={setSelected}
           />
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-2">
           <MapModeToggle value={mapMode} onChange={setMapMode} />
           <SeasonTypeToggle value={seasonType} onChange={setSeasonType} />
         </div>
       </header>
 
-      <section className="grid items-start gap-6 lg:grid-cols-[1fr_300px]">
+      <section className="grid items-start gap-4 lg:gap-6 lg:grid-cols-[1fr_300px]">
         <div className="rounded-2xl border border-white/10 bg-slate-900/35 p-2 backdrop-blur-md sm:p-3">
           {!selected ? (
             <EmptyState />
@@ -124,13 +136,26 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
               mode={mapMode}
               shotResultFilter={shotResultFilter}
               onShotResultFilterChange={setShotResultFilter}
-              hoveredZoneId={hoveredZone?.zone.id ?? null}
-              onZoneHover={setHoveredZone}
+              hoveredZoneId={
+                (isMobile ? selectedZone?.zone.id : hoveredZone?.zone.id) ?? null
+              }
+              onZoneHover={isMobile ? undefined : setHoveredZone}
+              onZoneSelect={isMobile ? setSelectedZone : undefined}
             />
           ) : null}
+
+          {isMobile && selectedZone && mapMode === 'heatmap' && !loading && (
+            <div className="mt-2">
+              <ZoneDetailCard
+                title="Selected zone"
+                zonePayload={selectedZone}
+                emptyLabel="No attempts in this zone."
+              />
+            </div>
+          )}
         </div>
 
-        <aside className="relative overflow-visible rounded-2xl border border-white/10 bg-slate-900/35 px-4 pb-4 pt-[5.5rem] backdrop-blur-md">
+        <aside className="relative overflow-visible rounded-2xl border border-white/10 bg-slate-900/35 px-3 py-3 backdrop-blur-md sm:px-4 sm:py-4 lg:pb-4 lg:pt-[5.5rem]">
           <SidePanel
             player={selected}
             seasonType={seasonType}
@@ -139,6 +164,7 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
             totals={totals}
             hoveredZone={hoveredZone}
             loading={loading && !!selected}
+            isMobile={isMobile}
           />
         </aside>
       </section>
@@ -154,6 +180,7 @@ function SidePanel({
   totals,
   hoveredZone,
   loading,
+  isMobile,
 }: {
   player: Player | null;
   seasonType: SeasonType;
@@ -162,6 +189,7 @@ function SidePanel({
   totals: ShootingTotals | null;
   hoveredZone: ZoneHoverPayload | null;
   loading: boolean;
+  isMobile: boolean;
 }) {
   if (!player) {
     return (
@@ -175,81 +203,79 @@ function SidePanel({
 
   return (
     <div className="space-y-4">
-      <PlayerHeadshot player={player} glow={glow} />
-      <div>
-        <div className="text-lg font-semibold text-white">{player.fullName}</div>
-        <div className="text-xs uppercase tracking-wide text-slate-400">
-          {player.teamAbbreviation || '—'} · {seasonType}
-        </div>
-      </div>
-
-      {hoveredZone && !loading && (
-        <div className="rounded-lg border border-cyan-400/35 bg-slate-950/55 p-3 text-sm shadow-[0_0_24px_-4px_rgba(34,211,238,0.35)]">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-300/95">
-            Hovered zone
-          </div>
-          <div className="mt-0.5 font-medium text-white">{hoveredZone.zone.label}</div>
-          {hoveredZone.agg && hoveredZone.agg.fga > 0 ? (
-            <div className="mt-2 space-y-1.5 text-slate-200">
-              <div>
-                <span className="text-slate-400">FGM/FGA </span>
-                <span className="font-semibold text-white">
-                  {hoveredZone.agg.fgm} / {hoveredZone.agg.fga}
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-400">FG% </span>
-                <span className="font-semibold text-white">
-                  {fmtPct(hoveredZone.agg.fgPct)}
-                </span>
-                <span className="text-slate-500"> · league </span>
-                <span>{fmtPct(hoveredZone.agg.leagueFgPct)}</span>
-                {hoveredZone.agg.fgPctDelta !== null && (
-                  <span
-                    className={
-                      hoveredZone.agg.fgPctDelta >= 0
-                        ? ' ml-1 font-medium text-emerald-400'
-                        : ' ml-1 font-medium text-rose-400'
-                    }
-                  >
-                    ({fmtSignedPp(hoveredZone.agg.fgPctDelta)})
-                  </span>
-                )}
-              </div>
-              <p className="text-xs leading-snug text-slate-400">
-                {zoneVsLeagueTier(hoveredZone.agg)}
-              </p>
-              {(() => {
-                const u = unusualVsLeagueLine(hoveredZone.agg);
-                return u ? (
-                  <p className="text-xs leading-snug text-slate-500">{u}</p>
-                ) : null;
-              })()}
+      {isMobile ? (
+        <>
+          <div>
+            <div className="text-base font-semibold text-white">{player.fullName}</div>
+            <div className="text-xs uppercase tracking-wide text-slate-400">
+              {player.teamAbbreviation || '—'} · {seasonType}
             </div>
-          ) : (
-            <p className="mt-2 text-xs text-slate-400">No attempts in this zone.</p>
-          )}
-        </div>
+          </div>
+          <div className="grid grid-cols-[156px_1fr] items-stretch gap-1.5">
+            <PlayerHeadshot
+              player={player}
+              glow={glow}
+              isMobile={isMobile}
+              matchStatsHeight
+            />
+            <div className="grid grid-cols-1 gap-1.5">
+              <MobileStat label="Attempts" value={shots.length.toLocaleString()} />
+              <MobileStat
+                label="FG%"
+                value={totals ? `${(totals.fgPct * 100).toFixed(1)}%` : '—'}
+              />
+              <MobileStat
+                label="3PA"
+                value={totals ? totals.fg3a.toLocaleString() : '—'}
+              />
+              <MobileStat
+                label="3P%"
+                value={totals ? `${(totals.fg3Pct * 100).toFixed(1)}%` : '—'}
+              />
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <PlayerHeadshot player={player} glow={glow} isMobile={isMobile} />
+          <div>
+            <div className="text-base font-semibold text-white sm:text-lg">
+              {player.fullName}
+            </div>
+            <div className="text-xs uppercase tracking-wide text-slate-400">
+              {player.teamAbbreviation || '—'} · {seasonType}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <Stat label="Attempts" value={shots.length.toLocaleString()} />
+            <Stat
+              label="FG%"
+              value={totals ? `${(totals.fgPct * 100).toFixed(1)}%` : '—'}
+            />
+            <Stat
+              label="3PA"
+              value={totals ? totals.fg3a.toLocaleString() : '—'}
+            />
+            <Stat
+              label="3P%"
+              value={totals ? `${(totals.fg3Pct * 100).toFixed(1)}%` : '—'}
+            />
+          </div>
+        </>
       )}
 
-      <div className="grid grid-cols-2 gap-3 text-sm">
-        <Stat label="Attempts" value={shots.length.toLocaleString()} />
-        <Stat
-          label="FG%"
-          value={totals ? `${(totals.fgPct * 100).toFixed(1)}%` : '—'}
+      {!isMobile && hoveredZone && !loading && (
+        <ZoneDetailCard
+          title="Hovered zone"
+          zonePayload={hoveredZone}
+          emptyLabel="No attempts in this zone."
         />
-        <Stat
-          label="3PA"
-          value={totals ? totals.fg3a.toLocaleString() : '—'}
-        />
-        <Stat
-          label="3P%"
-          value={totals ? `${(totals.fg3Pct * 100).toFixed(1)}%` : '—'}
-        />
-      </div>
+      )}
       <p className="text-xs text-slate-500">
         {mapMode === 'heatmap'
-          ? 'Colors compare each zone’s FG% to the league average for that zone (green above, red below). Hover the court to highlight a zone and see details here; the chart tooltip shows the same numbers.'
+          ? isMobile
+            ? 'Colors compare each zone’s FG% to the league average for that zone (green above, red below). Tap a zone on the court to pin details below the chart.'
+            : 'Colors compare each zone’s FG% to the league average for that zone (green above, red below). Hover the court to highlight a zone and see details here; the chart tooltip shows the same numbers.'
           : 'Hexes show where shots happen most often. In Makes view, stronger green means more made shots in that area; in Misses view, deeper red means more misses.'}
       </p>
     </div>
@@ -264,7 +290,7 @@ function MapModeToggle({
   onChange: (mode: ShotChartMode) => void;
 }) {
   return (
-    <div className="inline-flex rounded-lg border border-white/10 bg-slate-900/60 p-1 text-sm">
+    <div className="inline-flex rounded-lg border border-white/10 bg-slate-900/60 p-1 text-xs sm:text-sm">
       <ToggleButton
         active={value === 'heatmap'}
         label="Heatmap"
@@ -304,9 +330,13 @@ function ToggleButton({
 function PlayerHeadshot({
   player,
   glow,
+  isMobile,
+  matchStatsHeight = false,
 }: {
   player: Player;
   glow: { primary: string; secondary: string };
+  isMobile: boolean;
+  matchStatsHeight?: boolean;
 }) {
   const [errored, setErrored] = useState(false);
   const initials = player.fullName
@@ -321,7 +351,9 @@ function PlayerHeadshot({
     <>
       {errored ? (
         <div
-          className="relative z-10 flex aspect-[260/190] w-full items-center justify-center rounded-xl bg-slate-800 text-lg font-semibold text-slate-300 ring-1 ring-white/10"
+          className={`relative z-10 flex w-full items-center justify-center rounded-xl bg-slate-800 text-lg font-semibold text-slate-300 ring-1 ring-white/10 ${
+            matchStatsHeight ? 'h-full' : 'aspect-[260/190]'
+          }`}
           aria-label={`${player.fullName} headshot`}
         >
           {initials || '—'}
@@ -332,18 +364,26 @@ function PlayerHeadshot({
           alt={`${player.fullName} headshot`}
           loading="lazy"
           onError={() => setErrored(true)}
-          className="relative z-10 aspect-[260/190] w-full rounded-xl object-cover ring-1 ring-white/10"
+          className={`relative z-10 w-full rounded-xl object-cover ring-1 ring-white/10 ${
+            matchStatsHeight ? 'h-full' : 'aspect-[260/190]'
+          }`}
         />
       )}
     </>
   );
 
   return (
-    <div className="relative -mt-[4.5rem] mb-2 w-full">
+    <div
+      className={`relative mb-2 w-full ${isMobile ? '' : '-mt-[4.5rem]'} ${
+        matchStatsHeight ? 'h-full' : ''
+      }`}
+    >
       <div
-        className="relative w-full rounded-xl"
+        className={`relative w-full rounded-xl ${matchStatsHeight ? 'h-full' : ''}`}
         style={{
-          boxShadow: `0 0 0 1px rgba(255,255,255,0.08), 0 18px 48px -12px ${glow.primary}aa, 0 8px 28px -8px ${glow.secondary}99`,
+          boxShadow: isMobile
+            ? '0 0 0 1px rgba(255,255,255,0.08)'
+            : `0 0 0 1px rgba(255,255,255,0.08), 0 18px 48px -12px ${glow.primary}aa, 0 8px 28px -8px ${glow.secondary}99`,
         }}
       >
         {shell}
@@ -352,13 +392,103 @@ function PlayerHeadshot({
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({
+  label,
+  value,
+  compact = false,
+  dense = false,
+}: {
+  label: string;
+  value: string;
+  compact?: boolean;
+  dense?: boolean;
+}) {
   return (
-    <div className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2.5">
-      <div className="text-[11px] uppercase tracking-wider text-slate-400">
+    <div
+      className={`rounded-lg border border-white/10 bg-slate-950/40 px-3 ${
+        compact ? 'py-1.5' : 'py-2.5'
+      }`}
+    >
+      <div
+        className={`uppercase tracking-wider text-slate-400 ${
+          dense ? 'text-[10px]' : 'text-[11px]'
+        }`}
+      >
         {label}
       </div>
-      <div className="text-xl font-semibold tabular-nums text-white">{value}</div>
+      <div
+        className={`font-semibold tabular-nums text-white ${
+          dense ? 'text-base' : compact ? 'text-lg' : 'text-xl'
+        }`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function MobileStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between rounded-md border border-white/10 bg-slate-950/40 px-1 py-1.5">
+      <div className="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
+      <div className="text-sm font-semibold tabular-nums text-white">{value}</div>
+    </div>
+  );
+}
+
+function ZoneDetailCard({
+  title,
+  zonePayload,
+  emptyLabel,
+}: {
+  title: string;
+  zonePayload: ZoneHoverPayload;
+  emptyLabel: string;
+}) {
+  return (
+    <div className="rounded-lg border border-cyan-400/35 bg-slate-950/55 p-3 text-sm shadow-[0_0_24px_-4px_rgba(34,211,238,0.35)]">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-300/95">
+        {title}
+      </div>
+      <div className="mt-0.5 font-medium text-white">{zonePayload.zone.label}</div>
+      {zonePayload.agg && zonePayload.agg.fga > 0 ? (
+        <div className="mt-2 space-y-1.5 text-slate-200">
+          <div>
+            <span className="text-slate-400">FGM/FGA </span>
+            <span className="font-semibold text-white">
+              {zonePayload.agg.fgm} / {zonePayload.agg.fga}
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-400">FG% </span>
+            <span className="font-semibold text-white">
+              {fmtPct(zonePayload.agg.fgPct)}
+            </span>
+            <span className="text-slate-500"> · league </span>
+            <span>{fmtPct(zonePayload.agg.leagueFgPct)}</span>
+            {zonePayload.agg.fgPctDelta !== null && (
+              <span
+                className={
+                  zonePayload.agg.fgPctDelta >= 0
+                    ? ' ml-1 font-medium text-emerald-400'
+                    : ' ml-1 font-medium text-rose-400'
+                }
+              >
+                ({fmtSignedPp(zonePayload.agg.fgPctDelta)})
+              </span>
+            )}
+          </div>
+          <p className="text-xs leading-snug text-slate-400">
+            {zoneVsLeagueTier(zonePayload.agg)}
+          </p>
+          {(() => {
+            const u = unusualVsLeagueLine(zonePayload.agg);
+            return u ? <p className="text-xs leading-snug text-slate-500">{u}</p> : null;
+          })()}
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-slate-400">{emptyLabel}</p>
+      )}
     </div>
   );
 }

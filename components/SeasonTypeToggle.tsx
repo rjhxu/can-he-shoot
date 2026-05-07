@@ -14,7 +14,7 @@ interface Props {
 
 export default function SeasonTypeToggle({ value, onChange }: Props) {
   return (
-    <div className="inline-flex rounded-lg border border-white/10 bg-slate-900/60 p-1 text-sm">
+    <div className="inline-flex rounded-lg border border-white/10 bg-slate-900/60 p-1 text-xs sm:text-sm">
       {OPTIONS.map((o) => {
         const active = o.value === value;
         return (
