@@ -83,6 +83,37 @@ npm run typecheck
 npm run test:ci
 ```
 
+## Frontend Guide
+
+### Main user workflow
+
+1. Open the app and start typing a player name in the search box.
+2. Select a player from the active-roster results.
+3. Choose `Regular Season` or `Playoffs` with the season-type toggle.
+4. Pick a visualization mode:
+   - **Heatmap** to compare player FG% by zone against league averages.
+   - **Shot Chart** to inspect shot density over the half-court.
+5. Hover zones/hexbins to view tooltips and read the shooting summary panel.
+
+### Frontend features
+
+- **Player search (cmdk-based):** fast lookup across active NBA players.
+- **Default player on load:** the app preselects LeBron James when available to avoid an empty first screen.
+- **Season-type filtering:** switches all chart and summary data between `Regular Season` and `Playoffs`.
+- **Dual chart modes:**
+  - **Heatmap mode:** zone-level makes, attempts, FG%, and delta vs league FG%.
+  - **Shot Chart mode:** hexbin shot distribution with makes/misses filtering.
+- **Makes/Misses filter (Shot Chart):** quickly isolate shot outcomes for the selected player.
+- **Summary panel:** displays overall totals (FGM/FGA/FG%, 3PM/3PA/3P%) for the current view.
+- **Hover tooltips:** exposes per-zone or per-hex context without leaving the chart.
+- **Error state UI:** if player data fails to load, a clear fallback message is rendered with troubleshooting context.
+
+### Tips for users
+
+- If a player appears to have no data, switch season type first (`Regular Season` vs `Playoffs`).
+- First load can feel slower while cached data warms.
+- Data reflects the preloaded 2025-26 dataset currently stored in Supabase.
+
 ## System and Architecture
 
 ### Product behavior
