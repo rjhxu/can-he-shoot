@@ -1,29 +1,120 @@
-# can-he-shoot
+# Can He Shoot?
 
-A Next.js app that renders interactive NBA shot maps for active players. The app
-reads from Supabase tables (`nba_players`, `nba_shots`) while a Python scraper
-syncs fresh data from `stats.nba.com`.
+![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)
+![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-Postgres-3ECF8E?logo=supabase&logoColor=white)
+![Python](https://img.shields.io/badge/Python-Scraper-3776AB?logo=python&logoColor=white)
+![Vitest](https://img.shields.io/badge/Tested_with-Vitest-6E9F18?logo=vitest&logoColor=white)
 
-## What the app shows
+A full-stack student project that visualizes NBA shooting tendencies with interactive shot maps. The frontend is built with Next.js/React, data is served from Supabase, and a Python ingestion script syncs shot and roster data from `stats.nba.com`.
 
-- Player search across active NBA players
-- Season-type filter (`Regular Season` / `Playoffs`)
-- Map-mode toggle:
-  - **Heatmap**: zone-level FG% vs league average coloring
-  - **Shot Chart**: hexbin density view over the same half-court geometry
-- Shot-chart result filter (`Makes` / `Misses`) shown next to the shot-chart legend
-- Zone/hex hover tooltips and a right-side summary panel with shooting totals
+## Usage
 
-## Stack
+### 1) Install and run locally
 
-- Next.js 15 + React 19 + TypeScript
-- Supabase (`@supabase/supabase-js`) for server-side reads
-- Python scraper (`curl_cffi`, `supabase`)
-- Tailwind CSS, D3, cmdk, zod
+```bash
+npm install
+npm run dev
+```
 
-## Environment variables
+Then open [http://localhost:3000](http://localhost:3000).
 
-**Supabase (Dashboard → SQL Editor):** before using the anon key in the app, enable RLS and allow read access for `anon` / `authenticated`:
+### 2) App environment variables
+
+Set these for local development and deployment:
+
+```bash
+SUPABASE_URL=...
+SUPABASE_ANON_KEY=...
+```
+
+The app performs server-side reads only, under Row Level Security.
+
+### 3) Scraper environment variables
+
+For ingestion jobs only (do not expose to browser):
+
+```bash
+SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+```
+
+### 4) Run scraper
+
+Install Python dependencies:
+
+```bash
+pip install -r scripts/requirements.txt
+```
+
+Run sync modes:
+
+```bash
+# Players + shots
+python scripts/nba_scraper.py --mode all
+
+# Players only
+python scripts/nba_scraper.py --mode players
+
+# Shots only
+python scripts/nba_scraper.py --mode shots
+python scripts/nba_scraper.py --mode shots --season-type Playoffs
+```
+
+### 5) Run quality checks
+
+```bash
+npm run lint
+npm run typecheck
+npm run test:ci
+```
+
+## System and Architecture
+
+### Product behavior
+
+- Search active players by name
+- Toggle `Regular Season` / `Playoffs`
+- Switch between:
+  - **Heatmap** (zone FG% vs league average)
+  - **Shot Chart** (hexbin density view)
+- Inspect shooting totals and zone details in side panel + tooltips
+
+### High-level flow
+
+```mermaid
+flowchart TD
+  user[UserBrowser] --> nextApp[NextJsApp]
+  nextApp --> apiPlayers[ApiPlayersRoute]
+  nextApp --> apiShots[ApiShotsRoute]
+  apiPlayers --> supabase[(SupabasePostgres)]
+  apiShots --> supabase
+  scraper[PythonScraper] --> nbaStats[NbaStatsEndpoint]
+  scraper --> supabase
+```
+
+### Runtime data flow
+
+```text
+Browser -> /api/players          -> Supabase nba_players (revalidate 24h)
+Browser -> /api/shots/[playerId] -> Supabase nba_shots   (revalidate 30m)
+```
+
+`/api/shots/[playerId]` paginates reads in 1000-row chunks so high-volume players return complete histories.
+
+### Ingestion design
+
+- `scripts/nba_scraper.py` uses bounded retries and jittered delays between NBA requests.
+- `--mode all` uses one players request and four league-wide shot windows (three regular-season windows + playoffs), not per-player shot loops.
+- Upserts are idempotent:
+  - `nba_players` keyed by `person_id`
+  - `nba_shots` keyed by `shot_id`
+- Playoff rows use `po_` prefixed `shot_id` values to avoid collisions with regular-season rows.
+
+### Supabase security setup (RLS)
+
+Run once in Supabase SQL editor:
 
 ```sql
 alter table public.nba_players enable row level security;
@@ -43,56 +134,7 @@ create policy "Public read nba_shots"
   using (true);
 ```
 
-**Next.js app** (Vercel + local): server-side reads only; uses the **anon** key under Row Level Security.
-
-```bash
-SUPABASE_URL=...
-SUPABASE_ANON_KEY=...
-```
-
-**Python scraper** (when you run sync jobs yourself): bulk upserts bypass RLS, so keep **service role** off the web deployment and use it only for the scraper (never expose it to the browser or Vercel).
-
-```bash
-SUPABASE_URL=...
-SUPABASE_SERVICE_ROLE_KEY=...
-```
-
-### Vercel
-
-1. Add `SUPABASE_ANON_KEY` (same value as **Project Settings → API → anon public**).
-2. Remove `SUPABASE_SERVICE_ROLE_KEY` from the project if it was only used for this app.
-3. Redeploy so serverless env picks up changes.
-
-## Local development
-
-```bash
-npm install
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000).
-
-If localhost cannot read Supabase but deployment works, verify your terminal is
-not overriding `.env` with stale exported `SUPABASE_*` variables.
-
-## Data sync scraper
-
-NBA request profile by mode:
-
-- **`--mode players`**: **1** NBA request (`commonallplayers`)
-- **`--mode shots`**: **1** NBA request (`shotchartdetail`, league-wide `PlayerID=0`; `--season-type` chooses RS vs PO)
-- **`--mode all`**: **5** NBA requests (players + three Regular Season windows + Playoffs)
-  - Regular Season window 1: Oct-Dec
-  - Regular Season window 2: Jan-Feb
-  - Regular Season window 3: Mar-Apr
-  - Playoffs: full playoffs query
-
-The scraper waits **2–6s** between NBA requests and retries transient errors with bounded backoff.
-There is **no per-player shot loop**.
-
-League-wide shot rows are **filtered** to `person_id`s that exist in `nba_players` before upsert, so inserts respect a foreign key from `nba_shots` → `nba_players` (some chart rows are for players not on the synced active roster).
-
-Each shot row carries `season_type` (`Regular Season` or `Playoffs`). Before syncing, ensure the column exists in Supabase (run once in the SQL editor):
+Also ensure `season_type` exists on `nba_shots`:
 
 ```sql
 alter table nba_shots
@@ -102,43 +144,12 @@ create index if not exists idx_nba_shots_person_id_season_type
   on nba_shots (person_id, season_type);
 ```
 
-Regular-season `shot_id` values stay compatible with older rows; playoffs use a `po_…` prefix on `shot_id` so playoffs don’t collide with regular season.
+## CI workflow note
 
-Install Python deps:
+This repo stores the workflow definition at `scripts/ci.yml` per project preference. GitHub auto-discovers workflow files only under `.github/workflows/`, so copy or symlink this file there if you want Actions to run automatically on GitHub.
 
-```bash
-pip install -r scripts/requirements.txt
-```
+## Limitations and Tradeoffs
 
-Run modes:
-
-```bash
-# Players + shots
-python scripts/nba_scraper.py --mode all
-
-# Players only
-python scripts/nba_scraper.py --mode players
-
-# Shots only (one NBA call per invocation; defaults to Regular Season)
-python scripts/nba_scraper.py --mode shots
-python scripts/nba_scraper.py --mode shots --season-type Playoffs
-```
-
-Other useful flags:
-
-```bash
-python scripts/nba_scraper.py --season 2025-26 --season-type "Regular Season"
-```
-
-The scraper is idempotent by design: it uses Supabase `upsert` on
-`person_id` (`nba_players`) and `shot_id` (`nba_shots`), so reruns update rows
-instead of duplicating them. Schedule it with cron or another job runner if you want automated syncs; it needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the environment.
-
-## App data flow
-
-```text
-Browser -> /api/players          -> Supabase nba_players (revalidate 24h)
-Browser -> /api/shots/[playerId] -> Supabase nba_shots   (revalidate 30m)
-```
-
-`/api/shots/[playerId]` paginates Supabase reads in 1000-row chunks so players with more than 1000 attempts still return full shot totals.
+- `stats.nba.com` is Akamai-protected, so fully automated cloud scraping can be unstable.
+- The project prioritizes stable frontend UX and deterministic testability over always-on live scraping.
+- Recommended operation is periodic/manual ingestion into Supabase, then serving from the database.
