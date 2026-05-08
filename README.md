@@ -23,12 +23,45 @@ syncs fresh data from `stats.nba.com`.
 
 ## Environment variables
 
-Both the app and scraper require:
+**Supabase (Dashboard → SQL Editor):** before using the anon key in the app, enable RLS and allow read access for `anon` / `authenticated`:
+
+```sql
+alter table public.nba_players enable row level security;
+alter table public.nba_shots enable row level security;
+
+drop policy if exists "Public read nba_players" on public.nba_players;
+drop policy if exists "Public read nba_shots" on public.nba_shots;
+
+create policy "Public read nba_players"
+  on public.nba_players for select
+  to anon, authenticated
+  using (true);
+
+create policy "Public read nba_shots"
+  on public.nba_shots for select
+  to anon, authenticated
+  using (true);
+```
+
+**Next.js app** (Vercel + local): server-side reads only; uses the **anon** key under Row Level Security.
+
+```bash
+SUPABASE_URL=...
+SUPABASE_ANON_KEY=...
+```
+
+**Python scraper** (when you run sync jobs yourself): bulk upserts bypass RLS, so keep **service role** off the web deployment and use it only for the scraper (never expose it to the browser or Vercel).
 
 ```bash
 SUPABASE_URL=...
 SUPABASE_SERVICE_ROLE_KEY=...
 ```
+
+### Vercel
+
+1. Add `SUPABASE_ANON_KEY` (same value as **Project Settings → API → anon public**).
+2. Remove `SUPABASE_SERVICE_ROLE_KEY` from the project if it was only used for this app.
+3. Redeploy so serverless env picks up changes.
 
 ## Local development
 
@@ -59,10 +92,14 @@ There is **no per-player shot loop**.
 
 League-wide shot rows are **filtered** to `person_id`s that exist in `nba_players` before upsert, so inserts respect a foreign key from `nba_shots` → `nba_players` (some chart rows are for players not on the synced active roster).
 
-Each shot row carries `season_type` (`Regular Season` or `Playoffs`). Before syncing, ensure the column exists in Supabase:
+Each shot row carries `season_type` (`Regular Season` or `Playoffs`). Before syncing, ensure the column exists in Supabase (run once in the SQL editor):
 
-```bash
-# Paste scripts/sql/add_nba_shots_season_type.sql into the Supabase SQL editor
+```sql
+alter table nba_shots
+  add column if not exists season_type text not null default 'Regular Season';
+
+create index if not exists idx_nba_shots_person_id_season_type
+  on nba_shots (person_id, season_type);
 ```
 
 Regular-season `shot_id` values stay compatible with older rows; playoffs use a `po_…` prefix on `shot_id` so playoffs don’t collide with regular season.
@@ -95,19 +132,7 @@ python scripts/nba_scraper.py --season 2025-26 --season-type "Regular Season"
 
 The scraper is idempotent by design: it uses Supabase `upsert` on
 `person_id` (`nba_players`) and `shot_id` (`nba_shots`), so reruns update rows
-instead of duplicating them.
-
-## GitHub Actions automation
-
-Workflow file: `.github/workflows/nba_sync.yml`
-
-- Triggered by schedule and `workflow_dispatch`
-- Shots job runs daily: **regular season** then **playoffs** (**2** sequential NBA requests on the runner)
-- Players job runs weekly (**1** NBA request)
-- `workflow_dispatch` can run both jobs in the same workflow run (players and shots are separate jobs)
-- Both jobs read:
-  - `secrets.SUPABASE_URL`
-  - `secrets.SUPABASE_SERVICE_ROLE_KEY`
+instead of duplicating them. Schedule it with cron or another job runner if you want automated syncs; it needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the environment.
 
 ## App data flow
 
