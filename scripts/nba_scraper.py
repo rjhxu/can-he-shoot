@@ -31,6 +31,10 @@ from curl_cffi import requests
 from supabase import Client, ClientOptions, create_client
 
 NBA_STATS_URL = "https://stats.nba.com/stats"
+# Default scrape target season.
+# To change seasons:
+#   1) Update this constant (project-wide default), OR
+#   2) Pass --season at runtime, e.g. --season 2026-27 (recommended).
 DEFAULT_SEASON = "2025-26"
 DEFAULT_SEASON_TYPE = "Regular Season"
 DEFAULT_TIMEOUT_SECONDS = 20
@@ -478,7 +482,14 @@ def parse_args() -> argparse.Namespace:
         choices=["all", "players", "shots"],
         help="Run mode: all (default), players-only, or shots-only.",
     )
-    parser.add_argument("--season", default=DEFAULT_SEASON, help=f"Season string (default: {DEFAULT_SEASON})")
+    parser.add_argument(
+        "--season",
+        default=DEFAULT_SEASON,
+        help=(
+            f"Season string (default: {DEFAULT_SEASON}). "
+            "Change year by passing values like 2026-27."
+        ),
+    )
     parser.add_argument(
         "--season-type",
         default=DEFAULT_SEASON_TYPE,

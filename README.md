@@ -9,6 +9,13 @@
 
 A full-stack student project that visualizes NBA shooting tendencies with interactive shot maps. The frontend is built with Next.js/React, data is served from Supabase, and a Python ingestion script syncs shot and roster data from `stats.nba.com`.
 
+## Deployment Architecture
+
+- **Frontend:** Next.js app deployed on Vercel.
+- **Database:** Supabase Postgres on the free tier.
+- **Connection model:** Vercel server-side routes (`/api/players`, `/api/shots/[playerId]`) read from Supabase using `SUPABASE_URL` + `SUPABASE_ANON_KEY` under RLS.
+- **Current data state:** 2025-26 roster + shot data has already been loaded into Supabase, so the deployed app serves data directly from the database without requiring live scraping at request time.
+
 ## Usage
 
 ### 1) Install and run locally
@@ -51,15 +58,21 @@ pip install -r scripts/requirements.txt
 Run sync modes:
 
 ```bash
+# Current dataset in Supabase is already loaded for 2025-26.
+# To ingest a different year, pass --season (examples below).
+
 # Players + shots
 python scripts/nba_scraper.py --mode all
+python scripts/nba_scraper.py --mode all --season 2026-27
 
 # Players only
 python scripts/nba_scraper.py --mode players
+python scripts/nba_scraper.py --mode players --season 2026-27
 
 # Shots only
 python scripts/nba_scraper.py --mode shots
 python scripts/nba_scraper.py --mode shots --season-type Playoffs
+python scripts/nba_scraper.py --mode shots --season 2026-27 --season-type "Regular Season"
 ```
 
 ### 5) Run quality checks
