@@ -28,7 +28,6 @@ import {
   zoneVsLeagueTier,
 } from '@/lib/zoneComparison';
 import {
-  coerceStatsSeasonType,
   EMPTY_STATS_BY_SEASON_TYPE,
   hasPlayoffStats,
   type StatsBySeasonType,
@@ -74,7 +73,6 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
   const [statsByType, setStatsByType] = useState<StatsBySeasonType>(
     EMPTY_STATS_BY_SEASON_TYPE,
   );
-  const [statsSeasonType, setStatsSeasonType] = useState<SeasonType>('Regular Season');
   const [loading, setLoading] = useState(false);
   const [statsLoading, setStatsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +128,7 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
   }, [selected, seasonType]);
 
   useEffect(() => {
-    setStatsSeasonType('Regular Season');
+    setSeasonType('Regular Season');
   }, [selected]);
 
   useEffect(() => {
@@ -184,7 +182,6 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
         }
         setStatsByType(next);
         setStatsErrors(errors);
-        setStatsSeasonType((current) => coerceStatsSeasonType(current, next));
       })
       .finally(() => {
         if (!ctrl.signal.aborted) setStatsLoading(false);
@@ -256,8 +253,7 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
             shots={data?.shots ?? []}
             totals={totals}
             statsByType={statsByType}
-            statsSeasonType={statsSeasonType}
-            onStatsSeasonTypeChange={setStatsSeasonType}
+            onSeasonTypeChange={setSeasonType}
             statsLoading={statsLoading && !!selected}
             statsErrors={statsErrors}
             hoveredZone={hoveredZone}
@@ -277,8 +273,7 @@ function SidePanel({
   shots,
   totals,
   statsByType,
-  statsSeasonType,
-  onStatsSeasonTypeChange,
+  onSeasonTypeChange,
   statsLoading,
   statsErrors,
   hoveredZone,
@@ -291,8 +286,7 @@ function SidePanel({
   shots: Shot[];
   totals: ShootingTotals | null;
   statsByType: StatsBySeasonType;
-  statsSeasonType: SeasonType;
-  onStatsSeasonTypeChange: (seasonType: SeasonType) => void;
+  onSeasonTypeChange: (seasonType: SeasonType) => void;
   statsLoading: boolean;
   statsErrors: Partial<Record<SeasonType, string>>;
   hoveredZone: ZoneHoverPayload | null;
@@ -375,9 +369,9 @@ function SidePanel({
       )}
 
       <SeasonStatsPanel
+        seasonType={seasonType}
+        onSeasonTypeChange={onSeasonTypeChange}
         statsByType={statsByType}
-        statsSeasonType={statsSeasonType}
-        onStatsSeasonTypeChange={onStatsSeasonTypeChange}
         loading={statsLoading}
         errors={statsErrors}
         isMobile={isMobile}
@@ -558,23 +552,23 @@ function MobileStat({ label, value }: { label: string; value: string }) {
 }
 
 function SeasonStatsPanel({
+  seasonType,
+  onSeasonTypeChange,
   statsByType,
-  statsSeasonType,
-  onStatsSeasonTypeChange,
   loading,
   errors,
   isMobile,
 }: {
+  seasonType: SeasonType;
+  onSeasonTypeChange: (seasonType: SeasonType) => void;
   statsByType: StatsBySeasonType;
-  statsSeasonType: SeasonType;
-  onStatsSeasonTypeChange: (seasonType: SeasonType) => void;
   loading: boolean;
   errors: Partial<Record<SeasonType, string>>;
   isMobile: boolean;
 }) {
   const showPlayoffsTab = hasPlayoffStats(statsByType);
-  const stats = statsByType[statsSeasonType];
-  const error = errors[statsSeasonType] ?? null;
+  const stats = statsByType[seasonType];
+  const error = errors[seasonType] ?? null;
   const hasAnyStats =
     statsByType['Regular Season'] !== null || statsByType.Playoffs !== null;
 
@@ -615,8 +609,8 @@ function SeasonStatsPanel({
             Season stats
           </div>
           <SeasonTypeToggle
-            value={statsSeasonType}
-            onChange={onStatsSeasonTypeChange}
+            value={seasonType}
+            onChange={onSeasonTypeChange}
             compact
             visible={showPlayoffsTab}
             ariaLabel="Season stats type"
@@ -624,7 +618,7 @@ function SeasonStatsPanel({
         </div>
         <div className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-500/25 dark:bg-rose-500/5 dark:text-rose-200/90">
           <div className="font-medium text-rose-800 dark:text-rose-200">
-            {statsSeasonType} stats unavailable
+            {seasonType} stats unavailable
           </div>
           <div className="mt-0.5 text-rose-700 dark:text-rose-200/70">{error}</div>
         </div>
@@ -640,15 +634,15 @@ function SeasonStatsPanel({
             Season stats
           </div>
           <SeasonTypeToggle
-            value={statsSeasonType}
-            onChange={onStatsSeasonTypeChange}
+            value={seasonType}
+            onChange={onSeasonTypeChange}
             compact
             visible={showPlayoffsTab}
             ariaLabel="Season stats type"
           />
         </div>
         <div className="rounded-xl border border-line bg-panel p-3 text-xs text-ink-muted">
-          No {statsSeasonType.toLowerCase()} stats on file for this player yet.
+          No {seasonType.toLowerCase()} stats on file for this player yet.
         </div>
       </div>
     );
@@ -689,12 +683,12 @@ function SeasonStatsPanel({
             Season stats
           </div>
           <div className="text-[10px] text-ink-faint">
-            {statsSeasonType} · per game
+            {seasonType} · per game
           </div>
         </div>
         <SeasonTypeToggle
-          value={statsSeasonType}
-          onChange={onStatsSeasonTypeChange}
+          value={seasonType}
+          onChange={onSeasonTypeChange}
           compact
           visible={showPlayoffsTab}
           ariaLabel="Season stats type"
