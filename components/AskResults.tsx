@@ -129,58 +129,64 @@ export default function AskResults({ result, loading, error }: Props) {
           {showSql ? 'Hide SQL' : 'Show SQL'}
         </button>
         {showSql && (
-          <pre className="mt-2 overflow-x-auto rounded-xl border border-line bg-panel p-3 text-xs text-ink-muted">
-            {result.sql}
-          </pre>
+          <div className="mt-2 space-y-4">
+            <pre className="overflow-x-auto rounded-xl border border-line bg-panel p-3 text-xs text-ink-muted">
+              {result.sql}
+            </pre>
+            {displayRows.length > 0 && (
+              <div className="overflow-x-auto rounded-xl border border-line bg-panel shadow-sm">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-line bg-card">
+                      {result.columns.map((col) => (
+                        <th
+                          key={col}
+                          className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-ink-muted"
+                        >
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayRows.map((row, i) => (
+                      <tr key={i} className="border-b border-line/60 last:border-b-0">
+                        {result.columns.map((col) => (
+                          <td key={col} className="px-4 py-2.5 tabular-nums text-ink">
+                            {formatCell(row[col])}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {hiddenCount > 0 && (
+                  <div className="border-t border-line px-4 py-2 text-xs text-ink-faint">
+                    …and {hiddenCount} more row{hiddenCount === 1 ? '' : 's'}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
-      {displayRows.length > 0 && (
-        <div className="overflow-x-auto rounded-2xl border border-line bg-card shadow-sm">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-line bg-panel">
-                {result.columns.map((col) => (
-                  <th
-                    key={col}
-                    className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-ink-muted"
-                  >
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {displayRows.map((row, i) => (
-                <tr key={i} className="border-b border-line/60 last:border-b-0">
-                  {result.columns.map((col) => (
-                    <td key={col} className="px-4 py-2.5 tabular-nums text-ink">
-                      {formatCell(row[col])}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {hiddenCount > 0 && (
-            <div className="border-t border-line px-4 py-2 text-xs text-ink-faint">
-              …and {hiddenCount} more row{hiddenCount === 1 ? '' : 's'}
-            </div>
-          )}
-        </div>
-      )}
-
       {result.playerLinks.length > 0 && (
-        <div
-          className={`grid gap-3 ${result.playerLinks.length > 1 ? 'sm:grid-cols-2' : ''}`}
-        >
-          {result.playerLinks.map((player) => (
-            <PlayerLinkCard
-              key={player.personId}
-              personId={player.personId}
-              name={player.name}
-            />
-          ))}
+        <div>
+          <div className="mb-3 text-xs font-medium uppercase tracking-widest text-ink-faint">
+            Shot charts
+          </div>
+          <div
+            className={`grid gap-3 ${result.playerLinks.length > 1 ? 'sm:grid-cols-2' : ''}`}
+          >
+            {result.playerLinks.map((player) => (
+              <PlayerLinkCard
+                key={player.personId}
+                personId={player.personId}
+                name={player.name}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>

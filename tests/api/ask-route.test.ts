@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 const mockGenerateSql = vi.fn();
 const mockSummarizeResults = vi.fn();
 const mockQueryReadonly = vi.fn();
-const mockResolvePlayersByIds = vi.fn();
+const mockResolvePlayerLinksForAsk = vi.fn();
 const mockCheckRateLimit = vi.fn();
 
 vi.mock('@/lib/cohere/client', () => ({
@@ -19,7 +19,7 @@ vi.mock('@/lib/db/readonlyClient', () => ({
 }));
 
 vi.mock('@/lib/nba/players', () => ({
-  resolvePlayersByIds: mockResolvePlayersByIds,
+  resolvePlayerLinksForAsk: mockResolvePlayerLinksForAsk,
 }));
 
 vi.mock('@/lib/rateLimit', () => ({
@@ -52,7 +52,7 @@ describe('POST /api/ask', () => {
       columns: ['display_first_last', 'pts'],
       rows: [{ display_first_last: 'LeBron James', pts: 24.8 }],
     });
-    mockResolvePlayersByIds.mockResolvedValueOnce([
+    mockResolvePlayerLinksForAsk.mockResolvedValueOnce([
       { personId: 2544, name: 'LeBron James' },
     ]);
     mockSummarizeResults.mockResolvedValueOnce(
@@ -117,7 +117,7 @@ describe('POST /api/ask', () => {
       referenced_player_ids: [],
     });
     mockQueryReadonly.mockResolvedValueOnce({ columns: [], rows: [] });
-    mockResolvePlayersByIds.mockResolvedValueOnce([]);
+    mockResolvePlayerLinksForAsk.mockResolvedValueOnce([]);
     mockSummarizeResults.mockResolvedValueOnce(
       'No matching data was found. Try rephrasing your question.',
     );

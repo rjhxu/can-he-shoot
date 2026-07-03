@@ -66,3 +66,50 @@ describe('getActivePlayers', () => {
     );
   });
 });
+
+describe('extractPersonIdsFromResults', () => {
+  it('returns unique person_ids from result rows', async () => {
+    const { extractPersonIdsFromResults } = await import('@/lib/nba/players');
+    expect(
+      extractPersonIdsFromResults(
+        ['person_id', 'pts'],
+        [{ person_id: 2544, pts: 24.8 }, { person_id: 2544, pts: 25 }],
+      ),
+    ).toEqual([2544]);
+    expect(
+      extractPersonIdsFromResults(
+        ['person_id', 'pts'],
+        [{ person_id: 2544, pts: 24.8 }, { person_id: 201939, pts: 27 }],
+      ),
+    ).toEqual([2544, 201939]);
+  });
+
+  it('returns empty when person_id column is absent', async () => {
+    const { extractPersonIdsFromResults } = await import('@/lib/nba/players');
+    expect(
+      extractPersonIdsFromResults(['display_first_last', 'pts'], [{ display_first_last: 'LeBron James' }]),
+    ).toEqual([]);
+  });
+});
+
+describe('extractPlayerNamesFromResults', () => {
+  it('extracts display_first_last values', async () => {
+    const { extractPlayerNamesFromResults } = await import('@/lib/nba/players');
+    expect(
+      extractPlayerNamesFromResults(
+        ['display_first_last', 'fg_pct'],
+        [{ display_first_last: 'LeBron James', fg_pct: 0.5 }],
+      ),
+    ).toEqual(['LeBron James']);
+  });
+
+  it('falls back to player_name column', async () => {
+    const { extractPlayerNamesFromResults } = await import('@/lib/nba/players');
+    expect(
+      extractPlayerNamesFromResults(
+        ['player_name', 'pts'],
+        [{ player_name: 'Stephen Curry', pts: 27 }],
+      ),
+    ).toEqual(['Stephen Curry']);
+  });
+});

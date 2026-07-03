@@ -118,9 +118,9 @@ Server  → getActivePlayers()          → Supabase nba_players        (revalid
 5. Player names resolved for `playerLinks` when IDs are returned.
 6. Cohere writes a 1–3 sentence answer from the row data.
 
-**Ranking questions** (best/worst/highest/lowest) require minimum sample sizes in generated SQL: 100 shot attempts, `fta >= 100`, `fg3a >= 100`, `fga >= 200`, or `gp >= 20` depending on stat type.
+**Ranking questions** (best/worst/highest/lowest) require minimum sample sizes in generated SQL: 100 shot attempts, `(st.fta * st.gp) >= 100`, `(st.fg3a * st.gp) >= 100`, `(st.fga * st.gp) >= 200`, or `gp >= 20` depending on stat type. PerGame rows store per-game averages, so attempt totals use `column * gp`.
 
-**Stats table convention:** `nba_player_stats` queries filter `per_mode = 'PerGame' AND measure_type = 'Base'`.
+**Stats table convention:** `nba_player_stats` queries filter `per_mode = 'PerGame' AND measure_type = 'Base'`. Team filters use `st.team_abbreviation`, not `nba_players.team_abbreviation`.
 
 ### Acceptance checklist
 

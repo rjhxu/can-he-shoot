@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { generateSql, summarizeResults } from '@/lib/cohere/client';
 import { isDbTimeoutError, queryReadonly } from '@/lib/db/readonlyClient';
-import { resolvePlayersByIds } from '@/lib/nba/players';
+import { resolvePlayerLinksForAsk } from '@/lib/nba/players';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { validateSql } from '@/lib/sql/validate';
 
@@ -129,7 +129,7 @@ async function handleAsk(question: string) {
   console.log('[/api/ask] executing SQL:', sql);
 
   const { columns, rows } = await queryReadonly(sql);
-  const playerLinks = await resolvePlayersByIds(referenced_player_ids);
+  const playerLinks = await resolvePlayerLinksForAsk(referenced_player_ids, columns, rows);
   const answer = await summarizeResults(question, rows);
 
   return {

@@ -36,6 +36,27 @@ export async function getActivePlayers(): Promise<Player[]> {
   return getCachedActivePlayers();
 }
 
+/** Resolve shot-chart links from Cohere IDs, then query result columns as fallback. */
+export async function resolvePlayerLinksForAsk(
+  referencedIds: number[],
+  columns: string[],
+  rows: Record<string, unknown>[],
+): Promise<{ personId: number; name: string }[]> {
+  const ids = [...new Set([...referencedIds, ...extractPersonIdsFromResults(columns, rows)])];
+
+  let links = await resolvePlayersByIds(ids);
+  if (links.length === 0) {
+    links = await resolvePlayersByNames(extractPlayerNamesFromResults(columns, rows));
+  }
+
+  const seen = new Set<number>();
+  return links.filter((link) => {
+    if (seen.has(link.personId)) return false;
+    seen.add(link.personId);
+    return true;
+  });
+}
+
 export async function resolvePlayersByIds(
   personIds: number[],
 ): Promise<{ personId: number; name: string }[]> {
@@ -49,6 +70,58 @@ export async function resolvePlayersByIds(
 
   if (error) {
     throw new Error(`Failed to resolve player names: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => ({
+    personId: Number(row.person_id),
+    name: String(row.display_first_last ?? ''),
+  }));
+}
+
+const PLAYER_NAME_COLUMNS = ['display_first_last', 'player_name'] as const;
+
+export function extractPersonIdsFromResults(
+  columns: string[],
+  rows: Record<string, unknown>[],
+): number[] {
+  if (!columns.includes('person_id')) return [];
+
+  const ids = new Set<number>();
+  for (const row of rows) {
+    const id = Number(row.person_id);
+    if (Number.isInteger(id) && id > 0) ids.add(id);
+  }
+  return [...ids];
+}
+
+export function extractPlayerNamesFromResults(
+  columns: string[],
+  rows: Record<string, unknown>[],
+): string[] {
+  const nameColumn = PLAYER_NAME_COLUMNS.find((col) => columns.includes(col));
+  if (!nameColumn) return [];
+
+  const names = new Set<string>();
+  for (const row of rows) {
+    const name = row[nameColumn];
+    if (typeof name === 'string' && name.trim()) names.add(name.trim());
+  }
+  return [...names];
+}
+
+export async function resolvePlayersByNames(
+  names: string[],
+): Promise<{ personId: number; name: string }[]> {
+  if (names.length === 0) return [];
+
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('nba_players')
+    .select('person_id, display_first_last')
+    .in('display_first_last', names);
+
+  if (error) {
+    throw new Error(`Failed to resolve players by name: ${error.message}`);
   }
 
   return (data ?? []).map((row) => ({
