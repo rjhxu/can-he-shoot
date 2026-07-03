@@ -6,6 +6,7 @@ stats.nba.com HTTP usage (minimal by design — no per-player shot loops):
 
   --mode players  -> 1 request (commonallplayers)
   --mode shots    -> 1 request (shotchartdetail, league-wide; --season-type picks RS vs PO)
+  --mode stats    -> 1 request (leaguedashplayerstats, Base PerGame; --season-type picks RS vs PO)
   --mode all      -> 1 commonallplayers + 4 shotchartdetail
                     (RS split Oct-Dec, Jan-Feb, Mar-Apr; then PO)
 
@@ -37,6 +38,8 @@ NBA_STATS_URL = "https://stats.nba.com/stats"
 #   2) Pass --season at runtime, e.g. --season 2026-27 (recommended).
 DEFAULT_SEASON = "2025-26"
 DEFAULT_SEASON_TYPE = "Regular Season"
+STATS_MEASURE_TYPE = "Base"
+STATS_PER_MODE = "PerGame"
 DEFAULT_TIMEOUT_SECONDS = 20
 MAX_RETRIES = 3
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
@@ -183,6 +186,123 @@ def fetch_players(session: requests.Session, season: str = DEFAULT_SEASON) -> Li
     players.sort(key=lambda p: p["display_first_last"])
     print(f"[players] Parsed {len(players)} active players for {season}.", flush=True)
     return players
+
+
+def _stats_num(row: Dict[str, Any], key: str) -> float:
+    val = row.get(key)
+    if val is None or val == "":
+        return 0.0
+    return float(val)
+
+
+def _stats_int(row: Dict[str, Any], key: str) -> int:
+    val = row.get(key)
+    if val is None or val == "":
+        return 0
+    return int(val)
+
+
+def _stats_row_to_db(
+    row: Dict[str, Any],
+    season: str,
+    season_type: str,
+) -> Dict[str, Any]:
+    return {
+        "person_id": _stats_int(row, "PLAYER_ID"),
+        "season": season,
+        "season_type": season_type,
+        "per_mode": STATS_PER_MODE,
+        "measure_type": STATS_MEASURE_TYPE,
+        "player_name": str(row.get("PLAYER_NAME") or ""),
+        "team_id": _stats_int(row, "TEAM_ID"),
+        "team_abbreviation": str(row.get("TEAM_ABBREVIATION") or ""),
+        "age": _stats_num(row, "AGE"),
+        "gp": _stats_int(row, "GP"),
+        "w": _stats_int(row, "W"),
+        "l": _stats_int(row, "L"),
+        "w_pct": _stats_num(row, "W_PCT"),
+        "min": _stats_num(row, "MIN"),
+        "fgm": _stats_int(row, "FGM"),
+        "fga": _stats_int(row, "FGA"),
+        "fg_pct": _stats_num(row, "FG_PCT"),
+        "fg3m": _stats_int(row, "FG3M"),
+        "fg3a": _stats_int(row, "FG3A"),
+        "fg3_pct": _stats_num(row, "FG3_PCT"),
+        "ftm": _stats_int(row, "FTM"),
+        "fta": _stats_int(row, "FTA"),
+        "ft_pct": _stats_num(row, "FT_PCT"),
+        "oreb": _stats_int(row, "OREB"),
+        "dreb": _stats_int(row, "DREB"),
+        "reb": _stats_int(row, "REB"),
+        "ast": _stats_int(row, "AST"),
+        "tov": _stats_int(row, "TOV"),
+        "stl": _stats_int(row, "STL"),
+        "blk": _stats_int(row, "BLK"),
+        "blka": _stats_int(row, "BLKA"),
+        "pf": _stats_int(row, "PF"),
+        "pfd": _stats_int(row, "PFD"),
+        "pts": _stats_num(row, "PTS"),
+        "plus_minus": _stats_num(row, "PLUS_MINUS"),
+        "nba_fantasy_pts": _stats_num(row, "NBA_FANTASY_PTS"),
+        "dd2": _stats_int(row, "DD2"),
+        "td3": _stats_int(row, "TD3"),
+    }
+
+
+def fetch_player_stats(
+    session: requests.Session,
+    season: str = DEFAULT_SEASON,
+    season_type: str = DEFAULT_SEASON_TYPE,
+) -> List[Dict[str, Any]]:
+    params = {
+        "College": "",
+        "Conference": "",
+        "Country": "",
+        "DateFrom": "",
+        "DateTo": "",
+        "Division": "",
+        "DraftPick": "",
+        "DraftYear": "",
+        "GameScope": "",
+        "GameSegment": "",
+        "Height": "",
+        "LastNGames": 0,
+        "LeagueID": "00",
+        "Location": "",
+        "MeasureType": STATS_MEASURE_TYPE,
+        "Month": 0,
+        "OpponentTeamID": 0,
+        "Outcome": "",
+        "PORound": 0,
+        "PaceAdjust": "N",
+        "PerMode": STATS_PER_MODE,
+        "Period": 0,
+        "PlayerExperience": "",
+        "PlayerPosition": "",
+        "PlusMinus": "N",
+        "Rank": "N",
+        "Season": season,
+        "SeasonSegment": "",
+        "SeasonType": season_type,
+        "ShotClockRange": "",
+        "StarterBench": "",
+        "TeamID": 0,
+        "TwoWay": 0,
+        "VsConference": "",
+        "VsDivision": "",
+        "Weight": "",
+    }
+    payload = _nba_get(session, "leaguedashplayerstats", params)
+    table = _get_result_set(payload, "LeagueDashPlayerStats")
+    rows = _rows_to_dicts(table)
+
+    stats = [_stats_row_to_db(row, season, season_type) for row in rows]
+    print(
+        f"[stats] Parsed {len(stats)} player stat rows for {season}, {season_type} "
+        f"({STATS_MEASURE_TYPE} / {STATS_PER_MODE}).",
+        flush=True,
+    )
+    return stats
 
 
 def _shot_id_for_row(shot_row: Dict[str, Any], player_id: int, season_type: str) -> str:
@@ -474,13 +594,39 @@ def upsert_shots(
     return total
 
 
+def upsert_player_stats(
+    supabase: Client,
+    stats: List[Dict[str, Any]],
+    batch_size: int = SUPABASE_PLAYERS_BATCH,
+) -> int:
+    """Returns number of rows upserted."""
+    if not stats:
+        print("[supabase] No player stats to upsert.", flush=True)
+        return 0
+
+    total = 0
+    batches = list(_chunk(stats, batch_size))
+    for idx, batch in enumerate(batches, start=1):
+        label = f"nba_player_stats batch {idx}/{len(batches)}"
+        _stable_upsert_batch(
+            supabase,
+            table="nba_player_stats",
+            batch=batch,
+            on_conflict="person_id,season,season_type,per_mode,measure_type",
+            label=label,
+        )
+        total += len(batch)
+    print(f"[supabase] Upserted {total} player stat rows.", flush=True)
+    return total
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Scrape NBA data and upsert into Supabase.")
     parser.add_argument(
         "--mode",
         default="all",
-        choices=["all", "players", "shots"],
-        help="Run mode: all (default), players-only, or shots-only.",
+        choices=["all", "players", "shots", "stats"],
+        help="Run mode: all (default), players-only, shots-only, or stats-only.",
     )
     parser.add_argument(
         "--season",
@@ -495,8 +641,8 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_SEASON_TYPE,
         choices=["Regular Season", "Playoffs"],
         help=(
-            f"Shot-chart season segment (default: {DEFAULT_SEASON_TYPE}). "
-            "Used by --mode shots only; --mode all pulls three Regular Season windows plus Playoffs."
+            f"Season segment (default: {DEFAULT_SEASON_TYPE}). "
+            "Used by --mode shots and --mode stats; --mode all pulls three Regular Season shot windows plus Playoffs."
         ),
     )
     return parser.parse_args()
@@ -520,11 +666,41 @@ def main() -> int:
         allowed_ids = _known_person_ids(supabase)
         if not allowed_ids:
             print(
-                "[shots] nba_players is empty — cannot upsert shots (foreign key). "
+                f"[{args.mode}] nba_players is empty — cannot upsert (foreign key). "
                 "Run `python scripts/nba_scraper.py --mode players` first.",
                 flush=True,
             )
             return 1
+
+        if args.mode == "stats":
+            print(
+                f"[run] League-wide player stats sync — {args.season_type} "
+                f"(leaguedashplayerstats {STATS_MEASURE_TYPE} / {STATS_PER_MODE}).",
+                flush=True,
+            )
+            league_stats = fetch_player_stats(
+                session=session,
+                season=args.season,
+                season_type=args.season_type,
+            )
+            filtered_stats = [
+                s for s in league_stats if int(s.get("person_id") or 0) in allowed_ids
+            ]
+            dropped = len(league_stats) - len(filtered_stats)
+            if dropped:
+                print(
+                    f"[stats] Dropping {dropped} rows whose person_id is not in nba_players "
+                    "(league stats include players outside the synced active roster).",
+                    flush=True,
+                )
+            stats_upsert_count = upsert_player_stats(supabase, filtered_stats)
+            print(
+                f"[done] Finished stats sync for season={args.season} "
+                f"season_type='{args.season_type}'. "
+                f"Player stats upserted={stats_upsert_count}.",
+                flush=True,
+            )
+            return 0
 
         shot_windows: List[Dict[str, str]]
         if args.mode == "all":

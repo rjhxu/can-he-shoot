@@ -73,6 +73,30 @@ python scripts/nba_scraper.py --mode players --season 2026-27
 python scripts/nba_scraper.py --mode shots
 python scripts/nba_scraper.py --mode shots --season-type Playoffs
 python scripts/nba_scraper.py --mode shots --season 2026-27 --season-type "Regular Season"
+
+# Player stats only (Base / PerGame box scores)
+python scripts/nba_scraper.py --mode stats
+python scripts/nba_scraper.py --mode stats --season 2026-27
+python scripts/nba_scraper.py --mode stats --season-type Playoffs
+```
+
+**Player stats setup order**
+
+1. Sync active roster first: `python scripts/nba_scraper.py --mode players`
+2. Run the `nba_player_stats` SQL below in the Supabase SQL editor (one-time)
+3. Ingest regular-season stats: `python scripts/nba_scraper.py --mode stats`
+4. Optionally ingest playoffs: `python scripts/nba_scraper.py --mode stats --season-type Playoffs`
+
+**Verify player stats in Supabase**
+
+```sql
+select count(*) from nba_player_stats;
+
+select person_id, player_name, pts, reb, ast, fg_pct
+from nba_player_stats
+where season = '2025-26' and season_type = 'Regular Season'
+order by pts desc
+limit 10;
 ```
 
 ### 5) Run quality checks
@@ -154,7 +178,9 @@ Browser -> /api/shots/[playerId] -> Supabase nba_shots   (revalidate 30m)
 - Upserts are idempotent:
   - `nba_players` keyed by `person_id`
   - `nba_shots` keyed by `shot_id`
+  - `nba_player_stats` keyed by `(person_id, season, season_type, per_mode, measure_type)`
 - Playoff rows use `po_` prefixed `shot_id` values to avoid collisions with regular-season rows.
+- `--mode stats` pulls one `leaguedashplayerstats` request per run (Base / PerGame).
 
 ### Supabase security setup (RLS)
 
@@ -186,6 +212,65 @@ alter table nba_shots
 
 create index if not exists idx_nba_shots_person_id_season_type
   on nba_shots (person_id, season_type);
+```
+
+Create `nba_player_stats` (run once before `--mode stats`):
+
+```sql
+create table if not exists public.nba_player_stats (
+  person_id bigint not null references public.nba_players (person_id),
+  season text not null,
+  season_type text not null,
+  per_mode text not null,
+  measure_type text not null,
+  player_name text,
+  team_id integer,
+  team_abbreviation text,
+  age numeric,
+  gp integer,
+  w integer,
+  l integer,
+  w_pct numeric,
+  min numeric,
+  fgm integer,
+  fga integer,
+  fg_pct numeric,
+  fg3m integer,
+  fg3a integer,
+  fg3_pct numeric,
+  ftm integer,
+  fta integer,
+  ft_pct numeric,
+  oreb integer,
+  dreb integer,
+  reb integer,
+  ast integer,
+  tov integer,
+  stl integer,
+  blk integer,
+  blka integer,
+  pf integer,
+  pfd integer,
+  pts numeric,
+  plus_minus numeric,
+  nba_fantasy_pts numeric,
+  dd2 integer,
+  td3 integer,
+  updated_at timestamptz not null default now(),
+  primary key (person_id, season, season_type, per_mode, measure_type)
+);
+
+create index if not exists idx_nba_player_stats_season_season_type
+  on public.nba_player_stats (season, season_type);
+
+alter table public.nba_player_stats enable row level security;
+
+drop policy if exists "Public read nba_player_stats" on public.nba_player_stats;
+
+create policy "Public read nba_player_stats"
+  on public.nba_player_stats for select
+  to anon, authenticated
+  using (true);
 ```
 
 ## CI workflow note
