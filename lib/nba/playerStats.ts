@@ -1,8 +1,8 @@
 import { unstable_cache } from 'next/cache';
 import { getSupabaseServerClient } from '@/lib/supabase';
+import { CURRENT_SEASON } from './season';
 import type { PlayerSeasonStats, SeasonType } from './types';
 
-const SEASON = '2025-26';
 const PER_MODE = 'PerGame';
 const MEASURE_TYPE = 'Base';
 
@@ -29,7 +29,7 @@ async function fetchPlayerStats(
       'person_id, season, season_type, team_abbreviation, gp, min, fgm, fga, fg_pct, fg3m, fg3a, fg3_pct, ftm, fta, ft_pct, reb, ast, tov, stl, blk, pts, plus_minus',
     )
     .eq('person_id', playerId)
-    .eq('season', SEASON)
+    .eq('season', CURRENT_SEASON)
     .eq('season_type', seasonType)
     .eq('per_mode', PER_MODE)
     .eq('measure_type', MEASURE_TYPE)
@@ -43,7 +43,7 @@ async function fetchPlayerStats(
 
   return {
     personId: Number(data.person_id),
-    season: String(data.season ?? SEASON),
+    season: String(data.season ?? CURRENT_SEASON),
     seasonType: String(data.season_type ?? seasonType) as SeasonType,
     teamAbbreviation: String(data.team_abbreviation ?? ''),
     gp: num(data.gp),
@@ -78,5 +78,5 @@ export async function getPlayerStats(
     { revalidate: 1_800 },
   );
   const stats = await cachedGetter();
-  return { stats, season: SEASON, seasonType };
+  return { stats, season: CURRENT_SEASON, seasonType };
 }

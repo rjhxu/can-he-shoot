@@ -7,261 +7,162 @@
 ![Python](https://img.shields.io/badge/Python-Scraper-3776AB?logo=python&logoColor=white)
 ![Vitest](https://img.shields.io/badge/Tested_with-Vitest-6E9F18?logo=vitest&logoColor=white)
 
-A full-stack student project that visualizes NBA shooting tendencies with interactive shot maps and a natural-language **Ask** interface. Ask basketball questions in plain English and get StatMuse-style answers backed by Supabase shot and season data. The frontend is built with Next.js/React, NL queries run through Cohere, and a Python ingestion script syncs data from `stats.nba.com`.
+NBA shooting analytics with a natural-language **Ask** interface and interactive shot maps. Ask questions in plain English, get StatMuse-style answers from Supabase data, or browse per-player heatmaps and hexbin charts with season box scores.
 
-## Ask (Natural Language Queries)
+## Features
 
-The home page (`/`) is an Ask interface. Type a question like *"How many points does LeBron average this season?"* and the app:
+| Area | What it does |
+|------|----------------|
+| **Ask** (`/`) | NL questions → Cohere generates SQL → read-only Postgres → headline answer + table + player links |
+| **Shot maps** (`/stats`) | Search active roster, heatmap vs league, hexbin shot chart, zone tooltips |
+| **Player detail** (`/stats/[personId]`) | Deep-link to a player's shot map and season stats |
+| **Season stats panel** | Per-game box score (PTS/REB/AST, shooting splits, GP/MIN/+/-) with independent RS/PO toggle when playoff data exists |
+| **Theme** | Light/dark mode via header toggle; defaults to system preference |
 
-1. Converts your question to SQL via Cohere
-2. Validates and executes it read-only against Postgres (3s timeout)
-3. Returns a headline answer, optional results table, and a shot-chart link when one player is resolved
+## Routes
 
-**Routes:**
+### Pages
 
 | Route | Purpose |
 |-------|---------|
 | `/` | Ask homepage |
-| `/stats` | Browse all players + shot maps |
+| `/stats` | Browse players + shot maps |
 | `/stats/[personId]` | Player shot chart detail |
-| `POST /api/ask` | NL query endpoint |
 
-**Acceptance checklist** (verify after setup):
+### API
 
-- "How many points does LeBron average this season?"
-- "What's Steph Curry's 3PT% from the corner?"
-- "Which player has the best free throw percentage?"
-- "Compare Luka and Jokic's shot selection by zone"
-- "Does [player] shoot better in the 4th quarter?"
-- Out-of-scope question (e.g. "how does he shoot against the Celtics") — should fail gracefully with no hallucinated numbers
+| Route | Purpose |
+|-------|---------|
+| `POST /api/ask` | Natural-language query (Cohere + readonly Postgres) |
+| `GET /api/shots/[playerId]?seasonType=` | Shot locations, zone aggregates, totals, league averages |
+| `GET /api/stats/[playerId]?seasonType=` | Per-game season stats from `nba_player_stats` |
 
-**Ask stats convention:** queries against `nba_player_stats` should filter `per_mode = 'PerGame' AND measure_type = 'Base'` (the Cohere prompt enforces this).
+Player lists are loaded server-side via `getActivePlayers()` on stats pages — not through a separate API route.
 
-## Deployment Architecture
-
-- **Frontend:** Next.js app deployed on Vercel.
-- **Database:** Supabase Postgres on the free tier.
-- **Connection model:** Vercel server-side routes read from Supabase using `SUPABASE_URL` + `SUPABASE_ANON_KEY` under RLS. The Ask endpoint additionally uses a scoped `ask_readonly` Postgres role via `ASK_READONLY_DATABASE_URL` and Cohere via `COHERE_API_KEY`.
-- **Current data state:** 2025-26 roster + shot data has already been loaded into Supabase, so the deployed app serves data directly from the database without requiring live scraping at request time.
-
-## Usage
-
-### 1) Install and run locally
+## Quick start
 
 ```bash
 npm install
+cp .env.example .env.local   # fill in values
 npm run dev
 ```
 
-Then open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000).
 
-### 2) App environment variables
-
-Copy `.env.example` to `.env.local` and fill in:
+### Environment variables
 
 ```bash
+# App (server-side only)
 SUPABASE_URL=...
 SUPABASE_ANON_KEY=...
-COHERE_API_KEY=...                  # Ask feature — server-only
-ASK_READONLY_DATABASE_URL=...       # Ask feature — see setup below
-```
+COHERE_API_KEY=...
+ASK_READONLY_DATABASE_URL=...
 
-The app performs server-side reads only, under Row Level Security.
-
-**Ask readonly database setup** (one-time, in Supabase SQL editor):
-
-Run [`scripts/ask_readonly_setup.sql`](scripts/ask_readonly_setup.sql), then get the **transaction-mode pooled** connection string from Supabase → Settings → Database → Connection pooling, using the `ask_readonly` credentials. Set as `ASK_READONLY_DATABASE_URL`.
-
-For Vercel deployment, add `COHERE_API_KEY` and `ASK_READONLY_DATABASE_URL` to Project Settings → Environment Variables.
-
-### 3) Scraper environment variables
-
-For ingestion jobs only (do not expose to browser):
-
-```bash
-SUPABASE_URL=...
+# Scraper only — never expose to browser or Vercel frontend
 SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
-### 4) Run scraper
+**Ask readonly setup:** run [`scripts/ask_readonly_setup.sql`](scripts/ask_readonly_setup.sql) in Supabase, then set `ASK_READONLY_DATABASE_URL` to the transaction-mode pooled connection string using the `ask_readonly` credentials.
 
-Install Python dependencies:
-
-```bash
-pip install -r scripts/requirements.txt
-```
-
-Run sync modes:
-
-```bash
-# Current dataset in Supabase is already loaded for 2025-26.
-# To ingest a different year, pass --season (examples below).
-
-# Players + shots
-python scripts/nba_scraper.py --mode all
-python scripts/nba_scraper.py --mode all --season 2026-27
-
-# Players only
-python scripts/nba_scraper.py --mode players
-python scripts/nba_scraper.py --mode players --season 2026-27
-
-# Shots only
-python scripts/nba_scraper.py --mode shots
-python scripts/nba_scraper.py --mode shots --season-type Playoffs
-python scripts/nba_scraper.py --mode shots --season 2026-27 --season-type "Regular Season"
-
-# Player stats only (Base / PerGame box scores)
-python scripts/nba_scraper.py --mode stats
-python scripts/nba_scraper.py --mode stats --season 2026-27
-python scripts/nba_scraper.py --mode stats --season-type Playoffs
-```
-
-**Player stats setup order**
-
-1. Sync active roster first: `python scripts/nba_scraper.py --mode players`
-2. Run the `nba_player_stats` SQL below in the Supabase SQL editor (one-time)
-3. Ingest regular-season stats: `python scripts/nba_scraper.py --mode stats`
-4. Optionally ingest playoffs: `python scripts/nba_scraper.py --mode stats --season-type Playoffs`
-
-**Verify player stats in Supabase**
-
-```sql
-select count(*) from nba_player_stats;
-
-select person_id, player_name, pts, reb, ast, fg_pct
-from nba_player_stats
-where season = '2025-26' and season_type = 'Regular Season'
-order by pts desc
-limit 10;
-```
-
-### 5) Run quality checks
-
-```bash
-npm run lint
-npm run typecheck
-npm run test:ci
-```
-
-## Frontend Guide
-
-### Ask workflow
-
-1. Open `/` and type a basketball question or click an example chip.
-2. Read the headline answer and optional results table.
-3. If a single player was resolved, click through to their full shot chart.
-4. Use **Browse Players** in the header to explore shot maps manually.
-
-### Shot map workflow (`/stats`)
-
-1. Open the app and start typing a player name in the search box.
-2. Select a player from the active-roster results.
-3. Choose `Regular Season` or `Playoffs` with the season-type toggle.
-4. Pick a visualization mode:
-   - **Heatmap** to compare player FG% by zone against league averages.
-   - **Shot Chart** to inspect shot density over the half-court.
-5. Hover zones/hexbins to view tooltips and read the shooting summary panel.
-
-### Frontend features
-
-- **Player search (cmdk-based):** fast lookup across active NBA players.
-- **Default player on load:** the app preselects LeBron James when available to avoid an empty first screen.
-- **Season-type filtering:** switches all chart and summary data between `Regular Season` and `Playoffs`.
-- **Dual chart modes:**
-  - **Heatmap mode:** zone-level makes, attempts, FG%, and delta vs league FG%.
-  - **Shot Chart mode:** hexbin shot distribution with makes/misses filtering.
-- **Makes/Misses filter (Shot Chart):** quickly isolate shot outcomes for the selected player.
-- **Summary panel:** displays overall totals (FGM/FGA/FG%, 3PM/3PA/3P%) for the current view.
-- **Hover tooltips:** exposes per-zone or per-hex context without leaving the chart.
-- **Error state UI:** if player data fails to load, a clear fallback message is rendered with troubleshooting context.
-
-### Tips for users
-
-- If a player appears to have no data, switch season type first (`Regular Season` vs `Playoffs`).
-- First load can feel slower while cached data warms.
-- Data reflects the preloaded 2025-26 dataset currently stored in Supabase.
-
-## System and Architecture
-
-### Product behavior
-
-- Search active players by name
-- Toggle `Regular Season` / `Playoffs`
-- Switch between:
-  - **Heatmap** (zone FG% vs league average)
-  - **Shot Chart** (hexbin density view)
-- Inspect shooting totals and zone details in side panel + tooltips
-
-### High-level flow
+## Architecture
 
 ```mermaid
 flowchart TD
-  user[UserBrowser] --> nextApp[NextJsApp]
-  nextApp --> apiAsk[ApiAskRoute]
-  nextApp --> apiPlayers[ApiPlayersRoute]
-  nextApp --> apiShots[ApiShotsRoute]
-  apiAsk --> cohere[CohereAPI]
-  apiAsk --> pgReadonly[AskReadonlyPostgres]
-  apiPlayers --> supabase[(SupabasePostgres)]
-  apiShots --> supabase
-  scraper[PythonScraper] --> nbaStats[NbaStatsEndpoint]
+  user[Browser] --> pages[NextJsPages]
+  pages --> askApi[POST_api_ask]
+  pages --> shotsApi[GET_api_shots]
+  pages --> statsApi[GET_api_stats]
+  pages --> rscPlayers[getActivePlayers_RSC]
+
+  askApi --> cohere[CohereAPI]
+  askApi --> pgReadonly[ask_readonly_Postgres]
+
+  shotsApi --> supabase[(Supabase)]
+  statsApi --> supabase
+  rscPlayers --> supabase
+
+  scraper[PythonScraper] --> nbaCom[stats.nba.com]
   scraper --> supabase
 ```
 
 ### Runtime data flow
 
 ```text
-Browser -> POST /api/ask           -> Cohere (SQL + summary) + ask_readonly Postgres
-Browser -> /api/players            -> Supabase nba_players (revalidate 24h)
-Browser -> /api/shots/[playerId]   -> Supabase nba_shots   (revalidate 30m)
+Browser → POST /api/ask              → Cohere (SQL + summary) + ask_readonly Postgres
+Browser → GET /api/shots/[playerId]   → Supabase nba_shots        (revalidate 30m)
+Browser → GET /api/stats/[playerId]   → Supabase nba_player_stats (revalidate 30m)
+Server  → getActivePlayers()          → Supabase nba_players        (revalidate 24h)
 ```
 
-`/api/shots/[playerId]` paginates reads in 1000-row chunks so high-volume players return complete histories.
+### Key modules
 
-### Ingestion design
+| Path | Role |
+|------|------|
+| `lib/cohere/` | SQL generation + NL summary prompts |
+| `lib/sql/validate.ts` | SELECT-only regex guard for Ask queries |
+| `lib/db/readonlyClient.ts` | `pg` pool on `ASK_READONLY_DATABASE_URL` |
+| `lib/rateLimit.ts` | In-memory 20 req/hr per IP for `/api/ask` |
+| `lib/nba/players.ts` | Active roster from Supabase |
+| `lib/nba/shots.ts` | Paginated shot fetch + league zone averages |
+| `lib/nba/playerStats.ts` | Season box scores (`per_mode=PerGame`, `measure_type=Base`) |
+| `lib/nba/season.ts` | `CURRENT_SEASON` constant (`2025-26`) |
+| `lib/zoneComparison.ts` | Binomial tail tests for zone vs league copy |
+| `scripts/nba_scraper.py` | Ingestion from `stats.nba.com` → Supabase |
 
-- `scripts/nba_scraper.py` uses bounded retries and jittered delays between NBA requests.
-- `--mode all` uses one players request and four league-wide shot windows (three regular-season windows + playoffs), not per-player shot loops.
-- Upserts are idempotent:
-  - `nba_players` keyed by `person_id`
-  - `nba_shots` keyed by `shot_id`
-  - `nba_player_stats` keyed by `(person_id, season, season_type, per_mode, measure_type)`
-- Playoff rows use `po_` prefixed `shot_id` values to avoid collisions with regular-season rows.
-- `--mode stats` pulls one `leaguedashplayerstats` request per run (Base / PerGame).
+## Ask
 
-### Supabase security setup (RLS)
+1. User submits a question on `/`.
+2. Cohere generates a single `SELECT` (JSON schema output).
+3. `validateSql()` enforces table allowlist and keyword guard.
+4. Query runs on `ask_readonly` role (3s statement timeout).
+5. Player names resolved for `playerLinks` when IDs are returned.
+6. Cohere writes a 1–3 sentence answer from the row data.
 
-Run once in Supabase SQL editor:
+**Ranking questions** (best/worst/highest/lowest) require minimum sample sizes in generated SQL: 100 shot attempts, `fta >= 100`, `fg3a >= 100`, `fga >= 200`, or `gp >= 20` depending on stat type.
 
-```sql
-alter table public.nba_players enable row level security;
-alter table public.nba_shots enable row level security;
+**Stats table convention:** `nba_player_stats` queries filter `per_mode = 'PerGame' AND measure_type = 'Base'`.
 
-drop policy if exists "Public read nba_players" on public.nba_players;
-drop policy if exists "Public read nba_shots" on public.nba_shots;
+### Acceptance checklist
 
-create policy "Public read nba_players"
-  on public.nba_players for select
-  to anon, authenticated
-  using (true);
+- "How many points does LeBron average this season?"
+- "What's Steph Curry's 3PT% from the corner?"
+- "Which player has the best free throw percentage?"
+- "Compare Luka and Jokic's shot selection by zone"
+- "Does [player] shoot better in the 4th quarter?"
+- Out-of-scope question (e.g. "how does he shoot against the Celtics") — graceful empty result, no hallucinated numbers
 
-create policy "Public read nba_shots"
-  on public.nba_shots for select
-  to anon, authenticated
-  using (true);
+## Shot maps
+
+1. Open `/stats` or follow a player link from Ask results.
+2. Search and select a player.
+3. Toggle **Regular Season** / **Playoffs** for shot data.
+4. Switch **Heatmap** (zone FG% vs league) or **Shot Chart** (hexbin density).
+5. View **Season stats** in the sidebar — independent RS/PO toggle when playoff stats exist.
+
+## Data ingestion
+
+Install Python dependencies and sync from `stats.nba.com`:
+
+```bash
+pip install -r scripts/requirements.txt
+
+python scripts/nba_scraper.py --mode all          # players + shots + stats windows
+python scripts/nba_scraper.py --mode players
+python scripts/nba_scraper.py --mode shots --season-type Playoffs
+python scripts/nba_scraper.py --mode stats
 ```
 
-Also ensure `season_type` exists on `nba_shots`:
+**First-time `nba_player_stats` setup**
 
-```sql
-alter table nba_shots
-  add column if not exists season_type text not null default 'Regular Season';
+1. `python scripts/nba_scraper.py --mode players`
+2. Run the `nba_player_stats` DDL below in Supabase SQL editor
+3. `python scripts/nba_scraper.py --mode stats`
 
-create index if not exists idx_nba_shots_person_id_season_type
-  on nba_shots (person_id, season_type);
-```
+### Database tables
 
-Create `nba_player_stats` (run once before `--mode stats`):
+- `nba_players` — active roster (`person_id` PK)
+- `nba_shots` — shot locations and zones (`shot_id` PK)
+- `nba_player_stats` — per-game box scores (`person_id, season, season_type, per_mode, measure_type` PK)
 
 ```sql
 create table if not exists public.nba_player_stats (
@@ -307,12 +208,7 @@ create table if not exists public.nba_player_stats (
   primary key (person_id, season, season_type, per_mode, measure_type)
 );
 
-create index if not exists idx_nba_player_stats_season_season_type
-  on public.nba_player_stats (season, season_type);
-
 alter table public.nba_player_stats enable row level security;
-
-drop policy if exists "Public read nba_player_stats" on public.nba_player_stats;
 
 create policy "Public read nba_player_stats"
   on public.nba_player_stats for select
@@ -320,22 +216,30 @@ create policy "Public read nba_player_stats"
   using (true);
 ```
 
-## CI workflow note
+RLS read policies for `nba_players` and `nba_shots` are documented in [`scripts/ask_readonly_setup.sql`](scripts/ask_readonly_setup.sql) alongside the Ask readonly role.
 
-This repo stores the workflow definition at `scripts/ci.yml` per project preference. GitHub auto-discovers workflow files only under `.github/workflows/`, so copy or symlink this file there if you want Actions to run automatically on GitHub.
+## Development
 
-## Limitations and Tradeoffs
+```bash
+npm run lint
+npm run typecheck
+npm run test:ci
+```
 
-- `stats.nba.com` is Akamai-protected, so fully automated cloud scraping can be unstable.
-- The project prioritizes stable frontend UX and deterministic testability over always-on live scraping.
-- Recommended operation is periodic/manual ingestion into Supabase, then serving from the database.
-- **Ask SQL validation** uses a regex/keyword guard, not a full SQL parser — sufficient for v1 given prompt constraints, but `node-sql-parser` is the honest fast-follow before wider sharing.
-- **Ask rate limiting** is an in-memory per-IP counter (20 req/hour). Best-effort on serverless (resets per instance). Upstash Redis is the correct fast-follow before wider sharing.
+CI runs via [`.github/workflows/ci.yml`](.github/workflows/ci.yml) on push to `main` and on pull requests.
 
-## Fast-follows (out of scope for v1)
+## Limitations
 
-- Multi-turn conversation / follow-up questions with memory
-- Upstash Redis distributed rate limiting
-- Proper SQL parser (`node-sql-parser`) for validation
-- Opponent-specific queries (no opponent field in schema yet)
-- Local fine-tuned model (documented v2 story — v1 runs on Cohere)
+- `stats.nba.com` is Akamai-protected; scraping is periodic/manual, not live at request time.
+- Ask SQL validation is regex-based, not a full parser.
+- Ask rate limiting is in-memory per IP (best-effort on serverless).
+- No opponent-specific queries (schema has no opponent field).
+- Single hardcoded season (`2025-26`) unless scraper is run for another year.
+
+## Fast-follows
+
+- Multi-turn Ask conversation
+- Upstash Redis rate limiting
+- `node-sql-parser` for SQL validation
+- Opponent-specific shot data
+- Local fine-tuned model (v2)

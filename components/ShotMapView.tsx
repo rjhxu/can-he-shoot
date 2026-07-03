@@ -553,51 +553,6 @@ function MobileStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StatsSeasonTypeToggle({
-  value,
-  showPlayoffs,
-  onChange,
-}: {
-  value: SeasonType;
-  showPlayoffs: boolean;
-  onChange: (seasonType: SeasonType) => void;
-}) {
-  if (!showPlayoffs) return null;
-
-  const options: { value: SeasonType; label: string }[] = [
-    { value: 'Regular Season', label: 'RS' },
-    { value: 'Playoffs', label: 'PO' },
-  ];
-
-  return (
-    <div
-      className="inline-flex rounded-md border border-slate-200 bg-slate-100 p-0.5 text-[10px] dark:border-white/10 dark:bg-slate-900/60"
-      role="tablist"
-      aria-label="Season stats type"
-    >
-      {options.map((option) => {
-        const active = option.value === value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(option.value)}
-            className={`rounded px-2 py-0.5 transition ${
-              active
-                ? 'bg-white font-medium text-slate-900 shadow-sm dark:bg-white dark:text-slate-900'
-                : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
-            }`}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function SeasonStatsPanel({
   statsByType,
   statsSeasonType,
@@ -655,10 +610,12 @@ function SeasonStatsPanel({
           <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Season stats
           </div>
-          <StatsSeasonTypeToggle
+          <SeasonTypeToggle
             value={statsSeasonType}
-            showPlayoffs={showPlayoffsTab}
             onChange={onStatsSeasonTypeChange}
+            compact
+            visible={showPlayoffsTab}
+            ariaLabel="Season stats type"
           />
         </div>
         <div className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-500/25 dark:bg-rose-500/5 dark:text-rose-200/90">
@@ -678,10 +635,12 @@ function SeasonStatsPanel({
           <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Season stats
           </div>
-          <StatsSeasonTypeToggle
+          <SeasonTypeToggle
             value={statsSeasonType}
-            showPlayoffs={showPlayoffsTab}
             onChange={onStatsSeasonTypeChange}
+            compact
+            visible={showPlayoffsTab}
+            ariaLabel="Season stats type"
           />
         </div>
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-500">
@@ -729,10 +688,12 @@ function SeasonStatsPanel({
             {statsSeasonType} · per game
           </div>
         </div>
-        <StatsSeasonTypeToggle
+        <SeasonTypeToggle
           value={statsSeasonType}
-          showPlayoffs={showPlayoffsTab}
           onChange={onStatsSeasonTypeChange}
+          compact
+          visible={showPlayoffsTab}
+          ariaLabel="Season stats type"
         />
       </div>
 

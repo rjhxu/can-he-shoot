@@ -63,18 +63,6 @@ export interface ZoneAggregate {
   fgPctDelta: number | null;
 }
 
-export interface NbaApiTable {
-  name: string;
-  headers: string[];
-  rowSet: unknown[][];
-}
-
-export interface NbaApiResponse {
-  resource: string;
-  parameters: Record<string, unknown>;
-  resultSets: NbaApiTable[];
-}
-
 export interface PlayerSeasonStats {
   personId: number;
   season: string;

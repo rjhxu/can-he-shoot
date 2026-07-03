@@ -1,5 +1,3 @@
-import { fmtPct } from '@/lib/formatShot';
-
 /** Per-game counting stat — one decimal when fractional. */
 export function fmtPerGame(n: number): string {
   if (!Number.isFinite(n)) return '—';
@@ -22,5 +20,3 @@ export function fmtMinutes(n: number): string {
   if (!Number.isFinite(n)) return '—';
   return n.toFixed(1);
 }
-
-export { fmtPct };
