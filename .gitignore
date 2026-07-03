@@ -9,6 +9,7 @@ dist
 *.log
 .vercel
 tsconfig.tsbuildinfo
+*.tsbuildinfo
 
 # Python
 __pycache__/
