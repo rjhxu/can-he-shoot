@@ -7,13 +7,41 @@
 ![Python](https://img.shields.io/badge/Python-Scraper-3776AB?logo=python&logoColor=white)
 ![Vitest](https://img.shields.io/badge/Tested_with-Vitest-6E9F18?logo=vitest&logoColor=white)
 
-A full-stack student project that visualizes NBA shooting tendencies with interactive shot maps. The frontend is built with Next.js/React, data is served from Supabase, and a Python ingestion script syncs shot and roster data from `stats.nba.com`.
+A full-stack student project that visualizes NBA shooting tendencies with interactive shot maps and a natural-language **Ask** interface. Ask basketball questions in plain English and get StatMuse-style answers backed by Supabase shot and season data. The frontend is built with Next.js/React, NL queries run through Cohere, and a Python ingestion script syncs data from `stats.nba.com`.
+
+## Ask (Natural Language Queries)
+
+The home page (`/`) is an Ask interface. Type a question like *"How many points does LeBron average this season?"* and the app:
+
+1. Converts your question to SQL via Cohere
+2. Validates and executes it read-only against Postgres (3s timeout)
+3. Returns a headline answer, optional results table, and a shot-chart link when one player is resolved
+
+**Routes:**
+
+| Route | Purpose |
+|-------|---------|
+| `/` | Ask homepage |
+| `/players` | Browse all players + shot maps |
+| `/players/[personId]` | Player shot chart detail |
+| `POST /api/ask` | NL query endpoint |
+
+**Acceptance checklist** (verify after setup):
+
+- "How many points does LeBron average this season?"
+- "What's Steph Curry's 3PT% from the corner?"
+- "Which player has the best free throw percentage?"
+- "Compare Luka and Jokic's shot selection by zone"
+- "Does [player] shoot better in the 4th quarter?"
+- Out-of-scope question (e.g. "how does he shoot against the Celtics") — should fail gracefully with no hallucinated numbers
+
+**Ask stats convention:** queries against `nba_player_stats` should filter `per_mode = 'PerGame' AND measure_type = 'Base'` (the Cohere prompt enforces this).
 
 ## Deployment Architecture
 
 - **Frontend:** Next.js app deployed on Vercel.
 - **Database:** Supabase Postgres on the free tier.
-- **Connection model:** Vercel server-side routes (`/api/players`, `/api/shots/[playerId]`) read from Supabase using `SUPABASE_URL` + `SUPABASE_ANON_KEY` under RLS.
+- **Connection model:** Vercel server-side routes read from Supabase using `SUPABASE_URL` + `SUPABASE_ANON_KEY` under RLS. The Ask endpoint additionally uses a scoped `ask_readonly` Postgres role via `ASK_READONLY_DATABASE_URL` and Cohere via `COHERE_API_KEY`.
 - **Current data state:** 2025-26 roster + shot data has already been loaded into Supabase, so the deployed app serves data directly from the database without requiring live scraping at request time.
 
 ## Usage
@@ -29,14 +57,22 @@ Then open [http://localhost:3000](http://localhost:3000).
 
 ### 2) App environment variables
 
-Set these for local development and deployment:
+Copy `.env.example` to `.env.local` and fill in:
 
 ```bash
 SUPABASE_URL=...
 SUPABASE_ANON_KEY=...
+COHERE_API_KEY=...                  # Ask feature — server-only
+ASK_READONLY_DATABASE_URL=...       # Ask feature — see setup below
 ```
 
 The app performs server-side reads only, under Row Level Security.
+
+**Ask readonly database setup** (one-time, in Supabase SQL editor):
+
+Run [`scripts/ask_readonly_setup.sql`](scripts/ask_readonly_setup.sql), then get the **transaction-mode pooled** connection string from Supabase → Settings → Database → Connection pooling, using the `ask_readonly` credentials. Set as `ASK_READONLY_DATABASE_URL`.
+
+For Vercel deployment, add `COHERE_API_KEY` and `ASK_READONLY_DATABASE_URL` to Project Settings → Environment Variables.
 
 ### 3) Scraper environment variables
 
@@ -109,7 +145,14 @@ npm run test:ci
 
 ## Frontend Guide
 
-### Main user workflow
+### Ask workflow
+
+1. Open `/` and type a basketball question or click an example chip.
+2. Read the headline answer and optional results table.
+3. If a single player was resolved, click through to their full shot chart.
+4. Use **Browse Players** in the header to explore shot maps manually.
+
+### Shot map workflow (`/players`)
 
 1. Open the app and start typing a player name in the search box.
 2. Select a player from the active-roster results.
@@ -154,8 +197,11 @@ npm run test:ci
 ```mermaid
 flowchart TD
   user[UserBrowser] --> nextApp[NextJsApp]
+  nextApp --> apiAsk[ApiAskRoute]
   nextApp --> apiPlayers[ApiPlayersRoute]
   nextApp --> apiShots[ApiShotsRoute]
+  apiAsk --> cohere[CohereAPI]
+  apiAsk --> pgReadonly[AskReadonlyPostgres]
   apiPlayers --> supabase[(SupabasePostgres)]
   apiShots --> supabase
   scraper[PythonScraper] --> nbaStats[NbaStatsEndpoint]
@@ -165,8 +211,9 @@ flowchart TD
 ### Runtime data flow
 
 ```text
-Browser -> /api/players          -> Supabase nba_players (revalidate 24h)
-Browser -> /api/shots/[playerId] -> Supabase nba_shots   (revalidate 30m)
+Browser -> POST /api/ask           -> Cohere (SQL + summary) + ask_readonly Postgres
+Browser -> /api/players            -> Supabase nba_players (revalidate 24h)
+Browser -> /api/shots/[playerId]   -> Supabase nba_shots   (revalidate 30m)
 ```
 
 `/api/shots/[playerId]` paginates reads in 1000-row chunks so high-volume players return complete histories.
@@ -282,3 +329,13 @@ This repo stores the workflow definition at `scripts/ci.yml` per project prefere
 - `stats.nba.com` is Akamai-protected, so fully automated cloud scraping can be unstable.
 - The project prioritizes stable frontend UX and deterministic testability over always-on live scraping.
 - Recommended operation is periodic/manual ingestion into Supabase, then serving from the database.
+- **Ask SQL validation** uses a regex/keyword guard, not a full SQL parser — sufficient for v1 given prompt constraints, but `node-sql-parser` is the honest fast-follow before wider sharing.
+- **Ask rate limiting** is an in-memory per-IP counter (20 req/hour). Best-effort on serverless (resets per instance). Upstash Redis is the correct fast-follow before wider sharing.
+
+## Fast-follows (out of scope for v1)
+
+- Multi-turn conversation / follow-up questions with memory
+- Upstash Redis distributed rate limiting
+- Proper SQL parser (`node-sql-parser`) for validation
+- Opponent-specific queries (no opponent field in schema yet)
+- Local fine-tuned model (documented v2 story — v1 runs on Cohere)

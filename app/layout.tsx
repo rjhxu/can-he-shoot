@@ -3,7 +3,8 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Can he shoot?',
-  description: 'Interactive 2025-26 NBA shot map for every active player.',
+  description:
+    'Ask basketball questions in plain English and get StatMuse-style answers, plus interactive NBA shot maps.',
   icons: {
     icon: '/favicon.ico',
   },

@@ -35,3 +35,24 @@ const getCachedActivePlayers = unstable_cache(
 export async function getActivePlayers(): Promise<Player[]> {
   return getCachedActivePlayers();
 }
+
+export async function resolvePlayersByIds(
+  personIds: number[],
+): Promise<{ personId: number; name: string }[]> {
+  if (personIds.length === 0) return [];
+
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('nba_players')
+    .select('person_id, display_first_last')
+    .in('person_id', personIds);
+
+  if (error) {
+    throw new Error(`Failed to resolve player names: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => ({
+    personId: Number(row.person_id),
+    name: String(row.display_first_last ?? ''),
+  }));
+}
