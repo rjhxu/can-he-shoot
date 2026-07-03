@@ -3,13 +3,21 @@
 @tailwind utilities;
 
 :root {
+  --bg: #f8fafc;
+  --fg: #0f172a;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #0b0f17;
+  --fg: #e5e7eb;
   color-scheme: dark;
 }
 
 html,
 body {
-  background: #0b0f17;
-  color: #e5e7eb;
+  background: var(--bg);
+  color: var(--fg);
   min-height: 100%;
 }
 

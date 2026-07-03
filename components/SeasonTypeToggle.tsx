@@ -14,7 +14,7 @@ interface Props {
 
 export default function SeasonTypeToggle({ value, onChange }: Props) {
   return (
-    <div className="inline-flex rounded-lg border border-white/10 bg-slate-900/60 p-1 text-xs sm:text-sm">
+    <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs sm:text-sm dark:border-white/10 dark:bg-slate-900/60">
       {OPTIONS.map((o) => {
         const active = o.value === value;
         return (
@@ -24,8 +24,8 @@ export default function SeasonTypeToggle({ value, onChange }: Props) {
             onClick={() => onChange(o.value)}
             className={`rounded-md px-3 py-1.5 transition ${
               active
-                ? 'bg-white text-slate-900 font-medium'
-                : 'text-slate-300 hover:text-white'
+                ? 'bg-white font-medium text-slate-900 shadow-sm dark:bg-white dark:text-slate-900'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
             }`}
           >
             {o.label}

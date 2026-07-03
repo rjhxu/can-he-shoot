@@ -1,6 +1,7 @@
 'use client';
 
 import * as d3 from 'd3';
+import { useTheme } from 'next-themes';
 import { useId, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -92,6 +93,7 @@ function zoneFillColor(agg: ZoneAggregate | undefined): string {
 const HOVER_STROKE = '#22d3ee';
 const HEX_RADIUS = 8;
 const SQRT_3 = Math.sqrt(3);
+const COURT_BG = { light: '#e8edf4', dark: '#0e1422' } as const;
 
 export default function ShotChart({
   shots,
@@ -105,6 +107,8 @@ export default function ShotChart({
   onZoneSelect,
 }: Props) {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  const { resolvedTheme } = useTheme();
+  const courtBg = resolvedTheme === 'light' ? COURT_BG.light : COURT_BG.dark;
   const [zoneTooltip, setZoneTooltip] = useState<ZoneTooltipHover | null>(null);
   const [hexTooltip, setHexTooltip] = useState<HexTooltipHover | null>(null);
 
@@ -138,7 +142,7 @@ export default function ShotChart({
       <svg
         viewBox={COURT_VIEWBOX}
         className="block h-auto w-full"
-        style={{ background: '#0e1422', borderRadius: 12 }}
+        style={{ background: courtBg, borderRadius: 12 }}
         onMouseLeave={() => {
           setZoneTooltip(null);
           setHexTooltip(null);
@@ -222,7 +226,7 @@ export default function ShotChart({
         <g
           className="court-lines"
           fill="none"
-          stroke="#cbd5e1"
+          stroke="#64748b"
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -288,19 +292,19 @@ export default function ShotChart({
       {zoneTooltip &&
         createPortal(
           <div
-            className="pointer-events-none fixed z-[9999] rounded-md border border-white/10 bg-slate-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
+            className="pointer-events-none fixed z-[9999] rounded-md border border-slate-200 bg-white px-3 py-2 text-xs shadow-xl dark:border-white/10 dark:bg-slate-900/95 dark:backdrop-blur-sm"
             style={{ left: zoneTooltip.vx + 14, top: zoneTooltip.vy + 14 }}
           >
-            <div className="font-semibold text-white">{zoneTooltip.zone.label}</div>
+            <div className="font-semibold text-slate-900 dark:text-white">{zoneTooltip.zone.label}</div>
             {zoneTooltip.agg && zoneTooltip.agg.fga > 0 ? (
-              <div className="mt-1 space-y-0.5 text-slate-200">
+              <div className="mt-1 space-y-0.5 text-slate-700 dark:text-slate-200">
                 <div>
                   {zoneTooltip.agg.fgm} / {zoneTooltip.agg.fga} ·{' '}
                   <span className="font-semibold">
                     {fmtPct(zoneTooltip.agg.fgPct)}
                   </span>
                 </div>
-                <div className="text-slate-400">
+                <div className="text-slate-500 dark:text-slate-400">
                   League: {fmtPct(zoneTooltip.agg.leagueFgPct)}
                   {zoneTooltip.agg.fgPctDelta !== null && (
                     <span
@@ -316,7 +320,7 @@ export default function ShotChart({
                 </div>
               </div>
             ) : (
-              <div className="mt-1 text-slate-400">No attempts</div>
+              <div className="mt-1 text-slate-500 dark:text-slate-400">No attempts</div>
             )}
           </div>,
           document.body,
@@ -325,13 +329,13 @@ export default function ShotChart({
       {hexTooltip &&
         createPortal(
           <div
-            className="pointer-events-none fixed z-[9999] rounded-md border border-white/10 bg-slate-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
+            className="pointer-events-none fixed z-[9999] rounded-md border border-slate-200 bg-white px-3 py-2 text-xs shadow-xl dark:border-white/10 dark:bg-slate-900/95 dark:backdrop-blur-sm"
             style={{ left: hexTooltip.vx + 14, top: hexTooltip.vy + 14 }}
           >
-            <div className="font-semibold text-white">
+            <div className="font-semibold text-slate-900 dark:text-white">
               {hexTooltip.filter === 'makes' ? 'Made shots' : 'Missed shots'}
             </div>
-            <div className="mt-1 text-slate-200">
+            <div className="mt-1 text-slate-700 dark:text-slate-200">
               {hexTooltip.filter === 'makes'
                 ? `${hexTooltip.bin.makes} makes`
                 : `${hexTooltip.bin.misses} misses`}
@@ -363,7 +367,7 @@ function Legend({ uid }: { uid: string }) {
     color: colorForDelta(-FG_DELTA_DOMAIN + t * 2 * FG_DELTA_DOMAIN),
   }));
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
       <span className="shrink-0">vs league</span>
       <span className="shrink-0 text-rose-300/90">Below</span>
       <svg viewBox="0 0 200 14" className="h-3 w-48 shrink-0">
@@ -407,7 +411,7 @@ function HexLegend({
   const start = filter === 'makes' ? MAKES_GREEN_START : '#334155';
   const end = filter === 'makes' ? MAKES_GREEN_END : '#ff1f4b';
   return (
-    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
       <span className="shrink-0">
         {filter === 'makes' ? 'made shots per hex' : 'missed shots per hex'}
       </span>
@@ -448,7 +452,7 @@ function ShotResultToggle({
   onChange?: (filter: ShotResultFilter) => void;
 }) {
   return (
-    <div className="inline-flex rounded-lg border border-white/10 bg-slate-900/60 p-1 text-xs sm:text-sm">
+    <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs sm:text-sm dark:border-white/10 dark:bg-slate-900/60">
       <ToggleButton
         active={value === 'makes'}
         label="Makes"
@@ -477,7 +481,7 @@ function ToggleButton({
       type="button"
       onClick={onClick}
       className={`rounded-md px-3 py-1.5 transition ${
-        active ? 'bg-white font-medium text-slate-900' : 'text-slate-300 hover:text-white'
+        active ? 'bg-white font-medium text-slate-900 shadow-sm dark:bg-white dark:text-slate-900' : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
       }`}
     >
       {label}

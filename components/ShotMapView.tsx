@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTheme } from 'next-themes';
 import PlayerSearch from './PlayerSearch';
 import SeasonTypeToggle from './SeasonTypeToggle';
 import ShotChart, {
@@ -11,6 +12,12 @@ import ShotChart, {
 import { computeTotals, type ShootingTotals } from '@/lib/aggregate';
 import { fmtPct, fmtSignedPp } from '@/lib/formatShot';
 import {
+  fmtMakesAttempts,
+  fmtMinutes,
+  fmtPerGame,
+  fmtPlusMinus,
+} from '@/lib/formatPlayerStats';
+import {
   COURT_LINES,
   COURT_VIEWBOX,
   ZONES,
@@ -20,9 +27,16 @@ import {
   unusualVsLeagueLine,
   zoneVsLeagueTier,
 } from '@/lib/zoneComparison';
+import {
+  coerceStatsSeasonType,
+  EMPTY_STATS_BY_SEASON_TYPE,
+  hasPlayoffStats,
+  type StatsBySeasonType,
+} from '@/lib/statsSeasonTypeTabs';
 import type {
   LeagueZoneAverage,
   Player,
+  PlayerSeasonStats,
   SeasonType,
   Shot,
   ZoneAggregate,
@@ -43,6 +57,13 @@ interface ShotsResponse {
   leagueAverages: LeagueZoneAverage[];
 }
 
+interface StatsResponse {
+  playerId: number;
+  season: string;
+  seasonType: SeasonType;
+  stats: PlayerSeasonStats | null;
+}
+
 export default function ShotMapView({ players, defaultPlayer }: Props) {
   const [selected, setSelected] = useState<Player | null>(defaultPlayer ?? null);
   const [seasonType, setSeasonType] = useState<SeasonType>('Regular Season');
@@ -50,8 +71,16 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
   const [shotResultFilter, setShotResultFilter] =
     useState<ShotResultFilter>('makes');
   const [data, setData] = useState<ShotsResponse | null>(null);
+  const [statsByType, setStatsByType] = useState<StatsBySeasonType>(
+    EMPTY_STATS_BY_SEASON_TYPE,
+  );
+  const [statsSeasonType, setStatsSeasonType] = useState<SeasonType>('Regular Season');
   const [loading, setLoading] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statsErrors, setStatsErrors] = useState<Partial<Record<SeasonType, string>>>(
+    {},
+  );
   const [hoveredZone, setHoveredZone] = useState<ZoneHoverPayload | null>(null);
   const [selectedZone, setSelectedZone] = useState<ZoneHoverPayload | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -100,6 +129,70 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
     return () => ctrl.abort();
   }, [selected, seasonType]);
 
+  useEffect(() => {
+    setStatsSeasonType('Regular Season');
+  }, [selected]);
+
+  useEffect(() => {
+    if (!selected) {
+      setStatsByType(EMPTY_STATS_BY_SEASON_TYPE);
+      setStatsErrors({});
+      return;
+    }
+    const ctrl = new AbortController();
+    setStatsLoading(true);
+    setStatsErrors({});
+    setStatsByType(EMPTY_STATS_BY_SEASON_TYPE);
+
+    const seasonTypes: SeasonType[] = ['Regular Season', 'Playoffs'];
+    Promise.all(
+      seasonTypes.map(async (st) => {
+        try {
+          const params = new URLSearchParams({ seasonType: st });
+          const res = await fetch(
+            `/api/stats/${selected.personId}?${params.toString()}`,
+            { signal: ctrl.signal },
+          );
+          if (!res.ok) {
+            const body = (await res.json().catch(() => ({}))) as { error?: string };
+            throw new Error(body.error || `Request failed (${res.status})`);
+          }
+          const payload = (await res.json()) as StatsResponse;
+          return { seasonType: st, stats: payload.stats, error: null as string | null };
+        } catch (err) {
+          if (err instanceof Error && err.name === 'AbortError') {
+            return null;
+          }
+          return {
+            seasonType: st,
+            stats: null,
+            error: err instanceof Error ? err.message : 'Failed to load stats',
+          };
+        }
+      }),
+    )
+      .then((results) => {
+        if (ctrl.signal.aborted) return;
+        if (results.some((r) => r === null)) return;
+
+        const next: StatsBySeasonType = { ...EMPTY_STATS_BY_SEASON_TYPE };
+        const errors: Partial<Record<SeasonType, string>> = {};
+        for (const result of results) {
+          if (!result) continue;
+          next[result.seasonType] = result.stats;
+          if (result.error) errors[result.seasonType] = result.error;
+        }
+        setStatsByType(next);
+        setStatsErrors(errors);
+        setStatsSeasonType((current) => coerceStatsSeasonType(current, next));
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setStatsLoading(false);
+      });
+
+    return () => ctrl.abort();
+  }, [selected]);
+
   const totals = data?.totals ?? (data ? computeTotals(data.shots) : null);
 
   return (
@@ -119,7 +212,7 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
       </header>
 
       <section className="grid items-start gap-4 lg:gap-6 lg:grid-cols-[1fr_300px]">
-        <div className="rounded-2xl border border-white/10 bg-slate-900/35 p-2 backdrop-blur-md sm:p-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-white/10 dark:bg-slate-900/35 dark:shadow-none sm:p-3">
           {!selected ? (
             <EmptyState />
           ) : loading ? (
@@ -155,13 +248,18 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
           )}
         </div>
 
-        <aside className="relative overflow-visible rounded-2xl border border-white/10 bg-slate-900/35 px-3 py-3 backdrop-blur-md sm:px-4 sm:py-4 lg:pb-4 lg:pt-[5.5rem]">
+        <aside className="relative overflow-visible rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-white/10 dark:bg-slate-900/35 dark:shadow-none sm:px-4 sm:py-4 lg:pb-4 lg:pt-[5.5rem]">
           <SidePanel
             player={selected}
             seasonType={seasonType}
             mapMode={mapMode}
             shots={data?.shots ?? []}
             totals={totals}
+            statsByType={statsByType}
+            statsSeasonType={statsSeasonType}
+            onStatsSeasonTypeChange={setStatsSeasonType}
+            statsLoading={statsLoading && !!selected}
+            statsErrors={statsErrors}
             hoveredZone={hoveredZone}
             loading={loading && !!selected}
             isMobile={isMobile}
@@ -178,6 +276,11 @@ function SidePanel({
   mapMode,
   shots,
   totals,
+  statsByType,
+  statsSeasonType,
+  onStatsSeasonTypeChange,
+  statsLoading,
+  statsErrors,
   hoveredZone,
   loading,
   isMobile,
@@ -187,13 +290,18 @@ function SidePanel({
   mapMode: ShotChartMode;
   shots: Shot[];
   totals: ShootingTotals | null;
+  statsByType: StatsBySeasonType;
+  statsSeasonType: SeasonType;
+  onStatsSeasonTypeChange: (seasonType: SeasonType) => void;
+  statsLoading: boolean;
+  statsErrors: Partial<Record<SeasonType, string>>;
   hoveredZone: ZoneHoverPayload | null;
   loading: boolean;
   isMobile: boolean;
 }) {
   if (!player) {
     return (
-      <div className="text-sm text-slate-400">
+      <div className="text-sm text-slate-500 dark:text-slate-400">
         Pick a player to load their {`'25–'26`} shot map.
       </div>
     );
@@ -206,8 +314,8 @@ function SidePanel({
       {isMobile ? (
         <>
           <div>
-            <div className="text-base font-semibold text-white">{player.fullName}</div>
-            <div className="text-xs uppercase tracking-wide text-slate-400">
+            <div className="text-base font-semibold text-slate-900 dark:text-white">{player.fullName}</div>
+            <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
               {player.teamAbbreviation || '—'} · {seasonType}
             </div>
           </div>
@@ -239,10 +347,10 @@ function SidePanel({
         <>
           <PlayerHeadshot player={player} glow={glow} isMobile={isMobile} />
           <div>
-            <div className="text-base font-semibold text-white sm:text-lg">
+            <div className="text-base font-semibold text-slate-900 sm:text-lg dark:text-white">
               {player.fullName}
             </div>
-            <div className="text-xs uppercase tracking-wide text-slate-400">
+            <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
               {player.teamAbbreviation || '—'} · {seasonType}
             </div>
           </div>
@@ -263,6 +371,15 @@ function SidePanel({
           </div>
         </>
       )}
+
+      <SeasonStatsPanel
+        statsByType={statsByType}
+        statsSeasonType={statsSeasonType}
+        onStatsSeasonTypeChange={onStatsSeasonTypeChange}
+        loading={statsLoading}
+        errors={statsErrors}
+        isMobile={isMobile}
+      />
 
       {!isMobile && hoveredZone && !loading && (
         <ZoneDetailCard
@@ -290,7 +407,7 @@ function MapModeToggle({
   onChange: (mode: ShotChartMode) => void;
 }) {
   return (
-    <div className="inline-flex rounded-lg border border-white/10 bg-slate-900/60 p-1 text-xs sm:text-sm">
+    <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs sm:text-sm dark:border-white/10 dark:bg-slate-900/60">
       <ToggleButton
         active={value === 'heatmap'}
         label="Heatmap"
@@ -319,7 +436,7 @@ function ToggleButton({
       type="button"
       onClick={onClick}
       className={`rounded-md px-3 py-1.5 transition ${
-        active ? 'bg-white font-medium text-slate-900' : 'text-slate-300 hover:text-white'
+        active ? 'bg-white font-medium text-slate-900 shadow-sm dark:bg-white dark:text-slate-900' : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
       }`}
     >
       {label}
@@ -351,7 +468,7 @@ function PlayerHeadshot({
     <>
       {errored ? (
         <div
-          className={`relative z-10 flex w-full items-center justify-center rounded-xl bg-slate-800 text-lg font-semibold text-slate-300 ring-1 ring-white/10 ${
+          className={`relative z-10 flex w-full items-center justify-center rounded-xl bg-slate-200 text-lg font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-white/10 ${
             matchStatsHeight ? 'h-full' : 'aspect-[260/190]'
           }`}
           aria-label={`${player.fullName} headshot`}
@@ -364,7 +481,7 @@ function PlayerHeadshot({
           alt={`${player.fullName} headshot`}
           loading="lazy"
           onError={() => setErrored(true)}
-          className={`relative z-10 w-full rounded-xl object-cover ring-1 ring-white/10 ${
+          className={`relative z-10 w-full rounded-xl object-cover ring-1 ring-slate-200 dark:ring-white/10 ${
             matchStatsHeight ? 'h-full' : 'aspect-[260/190]'
           }`}
         />
@@ -405,19 +522,19 @@ function Stat({
 }) {
   return (
     <div
-      className={`rounded-lg border border-white/10 bg-slate-950/40 px-3 ${
+      className={`rounded-lg border border-slate-200 bg-slate-50 px-3 dark:border-white/10 dark:bg-slate-950/40 ${
         compact ? 'py-1.5' : 'py-2.5'
       }`}
     >
       <div
-        className={`uppercase tracking-wider text-slate-400 ${
+        className={`uppercase tracking-wider text-slate-500 dark:text-slate-400 ${
           dense ? 'text-[10px]' : 'text-[11px]'
         }`}
       >
         {label}
       </div>
       <div
-        className={`font-semibold tabular-nums text-white ${
+        className={`font-semibold tabular-nums text-slate-900 dark:text-white ${
           dense ? 'text-base' : compact ? 'text-lg' : 'text-xl'
         }`}
       >
@@ -429,9 +546,243 @@ function Stat({
 
 function MobileStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between rounded-md border border-white/10 bg-slate-950/40 px-1 py-1.5">
-      <div className="text-[10px] uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="text-sm font-semibold tabular-nums text-white">{value}</div>
+    <div className="flex items-baseline justify-between rounded-md border border-slate-200 bg-slate-50 px-1 py-1.5 dark:border-white/10 dark:bg-slate-950/40">
+      <div className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
+      <div className="text-sm font-semibold tabular-nums text-slate-900 dark:text-white">{value}</div>
+    </div>
+  );
+}
+
+function StatsSeasonTypeToggle({
+  value,
+  showPlayoffs,
+  onChange,
+}: {
+  value: SeasonType;
+  showPlayoffs: boolean;
+  onChange: (seasonType: SeasonType) => void;
+}) {
+  if (!showPlayoffs) return null;
+
+  const options: { value: SeasonType; label: string }[] = [
+    { value: 'Regular Season', label: 'RS' },
+    { value: 'Playoffs', label: 'PO' },
+  ];
+
+  return (
+    <div
+      className="inline-flex rounded-md border border-slate-200 bg-slate-100 p-0.5 text-[10px] dark:border-white/10 dark:bg-slate-900/60"
+      role="tablist"
+      aria-label="Season stats type"
+    >
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(option.value)}
+            className={`rounded px-2 py-0.5 transition ${
+              active
+                ? 'bg-white font-medium text-slate-900 shadow-sm dark:bg-white dark:text-slate-900'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SeasonStatsPanel({
+  statsByType,
+  statsSeasonType,
+  onStatsSeasonTypeChange,
+  loading,
+  errors,
+  isMobile,
+}: {
+  statsByType: StatsBySeasonType;
+  statsSeasonType: SeasonType;
+  onStatsSeasonTypeChange: (seasonType: SeasonType) => void;
+  loading: boolean;
+  errors: Partial<Record<SeasonType, string>>;
+  isMobile: boolean;
+}) {
+  const showPlayoffsTab = hasPlayoffStats(statsByType);
+  const stats = statsByType[statsSeasonType];
+  const error = errors[statsSeasonType] ?? null;
+  const hasAnyStats =
+    statsByType['Regular Season'] !== null || statsByType.Playoffs !== null;
+
+  if (loading) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-white/10 dark:bg-slate-950/40">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Season stats
+          </div>
+          <div className="h-6 w-16 animate-pulse rounded-md bg-slate-200 court-skeleton-legend dark:bg-slate-800/60" />
+        </div>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-12 animate-pulse rounded-md bg-slate-200 court-skeleton-legend dark:bg-slate-800/60"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasAnyStats && !error) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-500">
+        No season stats on file for this player yet.
+      </div>
+    );
+  }
+
+  if (error && !stats) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Season stats
+          </div>
+          <StatsSeasonTypeToggle
+            value={statsSeasonType}
+            showPlayoffs={showPlayoffsTab}
+            onChange={onStatsSeasonTypeChange}
+          />
+        </div>
+        <div className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-500/25 dark:bg-rose-500/5 dark:text-rose-200/90">
+          <div className="font-medium text-rose-800 dark:text-rose-200">
+            {statsSeasonType} stats unavailable
+          </div>
+          <div className="mt-0.5 text-rose-700 dark:text-rose-200/70">{error}</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Season stats
+          </div>
+          <StatsSeasonTypeToggle
+            value={statsSeasonType}
+            showPlayoffs={showPlayoffsTab}
+            onChange={onStatsSeasonTypeChange}
+          />
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-500">
+          No {statsSeasonType.toLowerCase()} stats on file for this player yet.
+        </div>
+      </div>
+    );
+  }
+
+  const coreStats = [
+    { label: 'PTS', value: fmtPerGame(stats.pts) },
+    { label: 'REB', value: fmtPerGame(stats.reb) },
+    { label: 'AST', value: fmtPerGame(stats.ast) },
+    { label: 'STL', value: fmtPerGame(stats.stl) },
+    { label: 'BLK', value: fmtPerGame(stats.blk) },
+    { label: 'TOV', value: fmtPerGame(stats.tov) },
+  ];
+
+  const shootingLines = [
+    {
+      label: 'FG',
+      pct: fmtPct(stats.fgPct),
+      line: fmtMakesAttempts(stats.fgm, stats.fga),
+    },
+    {
+      label: '3PT',
+      pct: fmtPct(stats.fg3Pct),
+      line: fmtMakesAttempts(stats.fg3m, stats.fg3a),
+    },
+    {
+      label: 'FT',
+      pct: fmtPct(stats.ftPct),
+      line: fmtMakesAttempts(stats.ftm, stats.fta),
+    },
+  ];
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-white/10 dark:bg-slate-950/40">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Season stats
+          </div>
+          <div className="text-[10px] text-slate-500">
+            {statsSeasonType} · per game
+          </div>
+        </div>
+        <StatsSeasonTypeToggle
+          value={statsSeasonType}
+          showPlayoffs={showPlayoffsTab}
+          onChange={onStatsSeasonTypeChange}
+        />
+      </div>
+
+      <div
+        className={`mt-2 grid gap-2 ${isMobile ? 'grid-cols-3' : 'grid-cols-3'}`}
+      >
+        {coreStats.map(({ label, value }) => (
+          <Stat key={label} label={label} value={value} compact dense />
+        ))}
+      </div>
+
+      <div className="mt-2 space-y-1.5 border-t border-slate-200 pt-2 text-sm dark:border-white/5">
+        {shootingLines.map(({ label, pct, line }) => (
+          <div key={label} className="flex items-baseline justify-between gap-2">
+            <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              {label}
+            </div>
+            <div className="tabular-nums text-slate-900 dark:text-white">
+              <span className="font-semibold">{pct}</span>
+              <span className="text-slate-400 dark:text-slate-500"> · </span>
+              <span className="text-slate-600 dark:text-slate-300">{line}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 border-t border-slate-200 pt-2 text-[11px] text-slate-500 dark:border-white/5 dark:text-slate-400">
+        <span>
+          GP <span className="font-medium text-slate-700 dark:text-slate-200">{stats.gp}</span>
+        </span>
+        <span>
+          MIN <span className="font-medium text-slate-700 dark:text-slate-200">{fmtMinutes(stats.min)}</span>
+        </span>
+        <span>
+          +/−{' '}
+          <span
+            className={`font-medium ${
+              stats.plusMinus === null
+                ? 'text-slate-700 dark:text-slate-200'
+                : stats.plusMinus > 0
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : stats.plusMinus < 0
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : 'text-slate-700 dark:text-slate-200'
+            }`}
+          >
+            {fmtPlusMinus(stats.plusMinus)}
+          </span>
+        </span>
+      </div>
     </div>
   );
 }
@@ -446,22 +797,22 @@ function ZoneDetailCard({
   emptyLabel: string;
 }) {
   return (
-    <div className="rounded-lg border border-cyan-400/35 bg-slate-950/55 p-3 text-sm shadow-[0_0_24px_-4px_rgba(34,211,238,0.35)]">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-300/95">
+    <div className="rounded-lg border border-cyan-400/50 bg-cyan-50 p-3 text-sm shadow-sm dark:border-cyan-400/35 dark:bg-slate-950/55 dark:shadow-[0_0_24px_-4px_rgba(34,211,238,0.35)]">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300/95">
         {title}
       </div>
-      <div className="mt-0.5 font-medium text-white">{zonePayload.zone.label}</div>
+      <div className="mt-0.5 font-medium text-slate-900 dark:text-white">{zonePayload.zone.label}</div>
       {zonePayload.agg && zonePayload.agg.fga > 0 ? (
-        <div className="mt-2 space-y-1.5 text-slate-200">
+        <div className="mt-2 space-y-1.5 text-slate-700 dark:text-slate-200">
           <div>
-            <span className="text-slate-400">FGM/FGA </span>
-            <span className="font-semibold text-white">
+            <span className="text-slate-500 dark:text-slate-400">FGM/FGA </span>
+            <span className="font-semibold text-slate-900 dark:text-white">
               {zonePayload.agg.fgm} / {zonePayload.agg.fga}
             </span>
           </div>
           <div>
-            <span className="text-slate-400">FG% </span>
-            <span className="font-semibold text-white">
+            <span className="text-slate-500 dark:text-slate-400">FG% </span>
+            <span className="font-semibold text-slate-900 dark:text-white">
               {fmtPct(zonePayload.agg.fgPct)}
             </span>
             <span className="text-slate-500"> · league </span>
@@ -478,7 +829,7 @@ function ZoneDetailCard({
               </span>
             )}
           </div>
-          <p className="text-xs leading-snug text-slate-400">
+          <p className="text-xs leading-snug text-slate-500 dark:text-slate-400">
             {zoneVsLeagueTier(zonePayload.agg)}
           </p>
           {(() => {
@@ -494,19 +845,24 @@ function ZoneDetailCard({
 }
 
 function CourtSkeleton() {
+  const { resolvedTheme } = useTheme();
+  const courtBg = resolvedTheme === 'light' ? '#e8edf4' : '#0e1422';
+  const zoneFill = resolvedTheme === 'light' ? 'rgb(203 213 225 / 0.55)' : 'rgb(51 65 85 / 0.55)';
+  const lineStroke = resolvedTheme === 'light' ? 'rgb(148 163 184 / 0.55)' : 'rgb(71 85 105 / 0.45)';
+
   return (
     <div className="relative w-full">
       <svg
         viewBox={COURT_VIEWBOX}
         className="block h-auto w-full"
-        style={{ background: '#0e1422', borderRadius: 12 }}
+        style={{ background: courtBg, borderRadius: 12 }}
       >
         <g className="court-skeleton-zones">
           {ZONES.map((z) => (
             <path
               key={z.id}
               d={z.d}
-              fill="rgb(51 65 85 / 0.55)"
+              fill={zoneFill}
               fillRule={z.fillRule ?? 'nonzero'}
               stroke="none"
               shapeRendering="geometricPrecision"
@@ -516,7 +872,7 @@ function CourtSkeleton() {
         <g
           className="pointer-events-none"
           fill="none"
-          stroke="rgb(71 85 105 / 0.45)"
+          stroke={lineStroke}
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -534,7 +890,7 @@ function CourtSkeleton() {
       </svg>
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
         <span>vs league</span>
-        <div className="court-skeleton-legend h-3 w-48 rounded-md bg-slate-700/60" />
+        <div className="court-skeleton-legend h-3 w-48 rounded-md bg-slate-300 dark:bg-slate-700/60" />
       </div>
     </div>
   );
@@ -542,9 +898,9 @@ function CourtSkeleton() {
 
 function EmptyState() {
   return (
-    <div className="grid h-[60vh] place-items-center text-center text-slate-400">
+    <div className="grid h-[60vh] place-items-center text-center text-slate-500 dark:text-slate-400">
       <div className="space-y-2">
-        <div className="text-lg font-medium text-slate-200">
+        <div className="text-lg font-medium text-slate-800 dark:text-slate-200">
           Where do they shoot from?
         </div>
         <div className="text-sm">
@@ -558,7 +914,7 @@ function EmptyState() {
 function LoadingState({ player }: { player: Player }) {
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 text-xs text-slate-400">
+      <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
         <Spinner />
         <span>Loading shots for {player.fullName}…</span>
       </div>
@@ -576,9 +932,9 @@ function NoShotsState({
 }) {
   const description = `${player.fullName} has no ${seasonType.toLowerCase()} attempts in 2025–26.`;
   return (
-    <div className="grid h-[60vh] place-items-center text-center text-slate-400">
+    <div className="grid h-[60vh] place-items-center text-center text-slate-500 dark:text-slate-400">
       <div className="space-y-1">
-        <div className="text-lg font-medium text-slate-200">No shots yet</div>
+        <div className="text-lg font-medium text-slate-800 dark:text-slate-200">No shots yet</div>
         <div className="text-sm">{description}</div>
       </div>
     </div>
@@ -587,10 +943,10 @@ function NoShotsState({
 
 function ErrorState({ message }: { message: string }) {
   return (
-    <div className="grid h-[60vh] place-items-center text-center text-rose-300">
+    <div className="grid h-[60vh] place-items-center text-center text-rose-600 dark:text-rose-300">
       <div className="space-y-2">
         <div className="text-lg font-medium">Couldn’t load shots</div>
-        <div className="max-w-sm text-sm text-rose-300/80">{message}</div>
+        <div className="max-w-sm text-sm text-rose-700 dark:text-rose-300/80">{message}</div>
         <div className="text-xs text-slate-500">
           The NBA stats API is sometimes blocked from cloud IPs (Akamai bot
           protection). Try again in a moment, or see the README for the Python
@@ -604,7 +960,7 @@ function ErrorState({ message }: { message: string }) {
 function Spinner() {
   return (
     <svg
-      className="h-5 w-5 shrink-0 animate-spin text-slate-300"
+      className="h-5 w-5 shrink-0 animate-spin text-slate-500 dark:text-slate-300"
       viewBox="0 0 24 24"
       fill="none"
     >

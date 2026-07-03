@@ -57,10 +57,10 @@ export default function AskHome() {
 
       <div className="flex flex-1 flex-col items-center gap-8 pt-8 sm:pt-16">
         <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
             Ask anything about NBA shooting
           </h1>
-          <p className="mt-2 text-sm text-slate-400">
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
             Plain-English questions, StatMuse-style answers — powered by your
             shot and season data.
           </p>
@@ -70,10 +70,6 @@ export default function AskHome() {
         <ExampleChips onSelect={submitQuestion} disabled={loading} />
         <AskResults result={result} loading={loading} error={error} />
       </div>
-
-      <footer className="mt-auto pt-6 text-center text-xs text-slate-500">
-        Data via Supabase (synced from stats.nba.com)
-      </footer>
     </main>
   );
 }

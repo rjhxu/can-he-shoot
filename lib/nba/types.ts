@@ -74,3 +74,28 @@ export interface NbaApiResponse {
   parameters: Record<string, unknown>;
   resultSets: NbaApiTable[];
 }
+
+export interface PlayerSeasonStats {
+  personId: number;
+  season: string;
+  seasonType: SeasonType;
+  teamAbbreviation: string;
+  gp: number;
+  min: number;
+  fgm: number;
+  fga: number;
+  fgPct: number;
+  fg3m: number;
+  fg3a: number;
+  fg3Pct: number;
+  ftm: number;
+  fta: number;
+  ftPct: number;
+  reb: number;
+  ast: number;
+  tov: number;
+  stl: number;
+  blk: number;
+  pts: number;
+  plusMinus: number | null;
+}

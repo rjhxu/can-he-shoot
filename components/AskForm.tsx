@@ -27,7 +27,7 @@ export default function AskForm({ onSubmit, loading, initialValue = '' }: Props)
           onChange={(e) => setQuestion(e.target.value)}
           placeholder="Ask about any player's shooting — e.g. 'Does Steph shoot better in the 4th quarter?'"
           disabled={loading}
-          className="flex-1 rounded-xl border border-slate-700/60 bg-slate-900/50 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/30 disabled:opacity-60"
+          className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/30 disabled:opacity-60 dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-white dark:placeholder:text-slate-500"
         />
         <button
           type="submit"

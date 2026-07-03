@@ -23,7 +23,7 @@ export default function ExampleChips({ onSelect, disabled }: Props) {
           type="button"
           disabled={disabled}
           onClick={() => onSelect(q)}
-          className="rounded-full border border-slate-700/60 bg-slate-900/40 px-3 py-1.5 text-left text-xs text-slate-300 transition hover:border-sky-500/40 hover:bg-slate-800/60 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-left text-xs text-slate-600 transition hover:border-sky-500/40 hover:bg-sky-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700/60 dark:bg-slate-900/40 dark:text-slate-300 dark:hover:border-sky-500/40 dark:hover:bg-slate-800/60 dark:hover:text-white"
         >
           {q}
         </button>

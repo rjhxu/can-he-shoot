@@ -22,8 +22,8 @@ The home page (`/`) is an Ask interface. Type a question like *"How many points 
 | Route | Purpose |
 |-------|---------|
 | `/` | Ask homepage |
-| `/players` | Browse all players + shot maps |
-| `/players/[personId]` | Player shot chart detail |
+| `/stats` | Browse all players + shot maps |
+| `/stats/[personId]` | Player shot chart detail |
 | `POST /api/ask` | NL query endpoint |
 
 **Acceptance checklist** (verify after setup):
@@ -152,7 +152,7 @@ npm run test:ci
 3. If a single player was resolved, click through to their full shot chart.
 4. Use **Browse Players** in the header to explore shot maps manually.
 
-### Shot map workflow (`/players`)
+### Shot map workflow (`/stats`)
 
 1. Open the app and start typing a player name in the search box.
 2. Select a player from the active-roster results.
