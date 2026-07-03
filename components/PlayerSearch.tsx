@@ -33,7 +33,7 @@ export default function PlayerSearch({ players, selected, onSelect }: Props) {
           if (!search) return 1;
           return value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0;
         }}
-        className="rounded-xl border border-slate-200 bg-white shadow-lg dark:border-white/10 dark:bg-slate-900/80 dark:backdrop-blur"
+        className="rounded-2xl border border-line bg-card shadow-sm transition focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/20"
       >
         <div className="flex items-center gap-2 px-4 py-3">
           <SearchIcon />
@@ -46,19 +46,19 @@ export default function PlayerSearch({ players, selected, onSelect }: Props) {
                 ? `${selected.fullName} · ${selected.teamAbbreviation}`
                 : 'Search any active NBA player…'
             }
-            className="w-full bg-transparent text-base text-slate-900 placeholder:text-slate-400 outline-none dark:text-white dark:placeholder:text-slate-400"
+            className="w-full bg-transparent text-base text-ink placeholder:text-ink-faint outline-none"
           />
           {selected && (
-            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-white/10 dark:text-slate-200">
+            <span className="rounded-md bg-panel px-2 py-0.5 text-xs font-medium text-ink-muted">
               {selected.teamAbbreviation}
             </span>
           )}
         </div>
 
         {open && (
-          <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-slate-900/95 dark:backdrop-blur">
+          <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-line bg-card shadow-xl">
             <Command.List className="max-h-80 overflow-y-auto p-1">
-              <Command.Empty className="px-3 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+              <Command.Empty className="px-3 py-6 text-center text-sm text-ink-muted">
                 No players match.
               </Command.Empty>
               {players.map((p) => (
@@ -70,10 +70,10 @@ export default function PlayerSearch({ players, selected, onSelect }: Props) {
                     setOpen(false);
                     setQuery('');
                   }}
-                  className="flex cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm text-slate-800 aria-selected:bg-slate-100 dark:text-slate-100 dark:aria-selected:bg-white/10"
+                  className="flex cursor-pointer items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm text-ink aria-selected:bg-panel"
                 >
                   <span className="truncate">{p.fullName}</span>
-                  <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-white/5 dark:text-slate-300">
+                  <span className="rounded bg-panel px-2 py-0.5 text-xs text-ink-muted">
                     {p.teamAbbreviation || '—'}
                   </span>
                 </Command.Item>
@@ -97,7 +97,7 @@ function SearchIcon() {
       strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="text-slate-400"
+      className="text-ink-faint"
     >
       <circle cx={11} cy={11} r={7} />
       <path d="m20 20-3-3" />

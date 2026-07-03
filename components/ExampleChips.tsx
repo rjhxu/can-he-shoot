@@ -16,14 +16,14 @@ interface Props {
 
 export default function ExampleChips({ onSelect, disabled }: Props) {
   return (
-    <div className="flex max-w-2xl flex-wrap justify-center gap-2">
+    <div className="flex flex-wrap justify-center gap-2">
       {EXAMPLE_QUESTIONS.map((q) => (
         <button
           key={q}
           type="button"
           disabled={disabled}
           onClick={() => onSelect(q)}
-          className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-left text-xs text-slate-600 transition hover:border-sky-500/40 hover:bg-sky-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700/60 dark:bg-slate-900/40 dark:text-slate-300 dark:hover:border-sky-500/40 dark:hover:bg-slate-800/60 dark:hover:text-white"
+          className="rounded-full border border-line bg-card px-3.5 py-1.5 text-left text-xs font-medium text-ink-muted transition hover:border-accent/50 hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
         >
           {q}
         </button>

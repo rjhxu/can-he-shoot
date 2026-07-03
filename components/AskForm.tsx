@@ -19,24 +19,45 @@ export default function AskForm({ onSubmit, loading, initialValue = '' }: Props)
   }
 
   return (
-    <form onSubmit={handleSubmit} className="w-full max-w-2xl">
-      <div className="flex gap-2">
+    <form onSubmit={handleSubmit} className="w-full">
+      <div className="flex items-center gap-2 rounded-2xl border border-line bg-card p-2 shadow-sm transition focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/20">
+        <SearchIcon />
         <input
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Ask about any player's shooting — e.g. 'Does Steph shoot better in the 4th quarter?'"
+          placeholder="Does Steph shoot better in the 4th quarter?"
           disabled={loading}
-          className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-sky-500/50 focus:outline-none focus:ring-1 focus:ring-sky-500/30 disabled:opacity-60 dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-white dark:placeholder:text-slate-500"
+          className="min-w-0 flex-1 bg-transparent py-2 text-base text-ink placeholder:text-ink-faint focus:outline-none disabled:opacity-60"
         />
         <button
           type="submit"
           disabled={loading || question.trim().length < 3}
-          className="rounded-xl bg-sky-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="shrink-0 rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Ask
+          {loading ? 'Thinking…' : 'Ask'}
         </button>
       </div>
     </form>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg
+      width={20}
+      height={20}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="ml-2 shrink-0 text-ink-faint"
+      aria-hidden
+    >
+      <circle cx={11} cy={11} r={7} />
+      <path d="m20 20-3-3" />
+    </svg>
   );
 }

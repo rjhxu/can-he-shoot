@@ -35,9 +35,9 @@ export default function SeasonTypeToggle({
 
   const options = compact ? COMPACT_OPTIONS : FULL_OPTIONS;
   const sizeClass = compact
-    ? 'rounded-md border border-slate-200 bg-slate-100 p-0.5 text-[10px] dark:border-white/10 dark:bg-slate-900/60'
-    : 'rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs sm:text-sm dark:border-white/10 dark:bg-slate-900/60';
-  const buttonPad = compact ? 'rounded px-2 py-0.5' : 'rounded-md px-3 py-1.5';
+    ? 'rounded-full border border-line bg-panel p-0.5 text-[10px]'
+    : 'rounded-full border border-line bg-panel p-1 text-xs sm:text-sm';
+  const buttonPad = compact ? 'rounded-full px-2 py-0.5' : 'rounded-full px-3 py-1.5';
 
   return (
     <div
@@ -56,8 +56,8 @@ export default function SeasonTypeToggle({
             onClick={() => onChange(o.value)}
             className={`${buttonPad} transition ${
               active
-                ? 'bg-white font-medium text-slate-900 shadow-sm dark:bg-white dark:text-slate-900'
-                : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+                ? 'bg-ink font-medium text-paper shadow-sm'
+                : 'text-ink-muted hover:text-ink'
             }`}
           >
             {o.label}

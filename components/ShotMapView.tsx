@@ -211,8 +211,8 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
         </div>
       </header>
 
-      <section className="grid items-start gap-4 lg:gap-6 lg:grid-cols-[1fr_300px]">
-        <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-white/10 dark:bg-slate-900/35 dark:shadow-none sm:p-3">
+      <section className="grid items-start gap-4 lg:gap-6 lg:grid-cols-[1fr_320px]">
+        <div className="rounded-2xl border border-line bg-card p-2 shadow-sm sm:p-3">
           {!selected ? (
             <EmptyState />
           ) : loading ? (
@@ -248,7 +248,7 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
           )}
         </div>
 
-        <aside className="relative overflow-visible rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-white/10 dark:bg-slate-900/35 dark:shadow-none sm:px-4 sm:py-4 lg:pb-4 lg:pt-[5.5rem]">
+        <aside className="relative overflow-visible rounded-2xl border border-line bg-card px-3 py-3 shadow-sm sm:px-4 sm:py-4 lg:pb-4 lg:pt-[5.5rem]">
           <SidePanel
             player={selected}
             seasonType={seasonType}
@@ -301,7 +301,7 @@ function SidePanel({
 }) {
   if (!player) {
     return (
-      <div className="text-sm text-slate-500 dark:text-slate-400">
+      <div className="text-sm text-ink-muted">
         Pick a player to load their {`'25–'26`} shot map.
       </div>
     );
@@ -314,8 +314,10 @@ function SidePanel({
       {isMobile ? (
         <>
           <div>
-            <div className="text-base font-semibold text-slate-900 dark:text-white">{player.fullName}</div>
-            <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <div className="font-display text-xl font-bold uppercase tracking-wide text-ink">
+              {player.fullName}
+            </div>
+            <div className="text-xs uppercase tracking-widest text-ink-muted">
               {player.teamAbbreviation || '—'} · {seasonType}
             </div>
           </div>
@@ -347,10 +349,10 @@ function SidePanel({
         <>
           <PlayerHeadshot player={player} glow={glow} isMobile={isMobile} />
           <div>
-            <div className="text-base font-semibold text-slate-900 sm:text-lg dark:text-white">
+            <div className="font-display text-2xl font-bold uppercase tracking-wide text-ink">
               {player.fullName}
             </div>
-            <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <div className="text-xs uppercase tracking-widest text-ink-muted">
               {player.teamAbbreviation || '—'} · {seasonType}
             </div>
           </div>
@@ -388,7 +390,7 @@ function SidePanel({
           emptyLabel="No attempts in this zone."
         />
       )}
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-ink-faint">
         {mapMode === 'heatmap'
           ? isMobile
             ? 'Colors compare each zone’s FG% to the league average for that zone (green above, red below). Tap a zone on the court to pin details below the chart.'
@@ -407,7 +409,7 @@ function MapModeToggle({
   onChange: (mode: ShotChartMode) => void;
 }) {
   return (
-    <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs sm:text-sm dark:border-white/10 dark:bg-slate-900/60">
+    <div className="inline-flex rounded-full border border-line bg-panel p-1 text-xs sm:text-sm">
       <ToggleButton
         active={value === 'heatmap'}
         label="Heatmap"
@@ -435,8 +437,10 @@ function ToggleButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-md px-3 py-1.5 transition ${
-        active ? 'bg-white font-medium text-slate-900 shadow-sm dark:bg-white dark:text-slate-900' : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+      className={`rounded-full px-3 py-1.5 transition ${
+        active
+          ? 'bg-ink font-medium text-paper shadow-sm'
+          : 'text-ink-muted hover:text-ink'
       }`}
     >
       {label}
@@ -468,7 +472,7 @@ function PlayerHeadshot({
     <>
       {errored ? (
         <div
-          className={`relative z-10 flex w-full items-center justify-center rounded-xl bg-slate-200 text-lg font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-white/10 ${
+          className={`relative z-10 flex w-full items-center justify-center rounded-xl bg-panel text-lg font-semibold text-ink-muted ring-1 ring-line ${
             matchStatsHeight ? 'h-full' : 'aspect-[260/190]'
           }`}
           aria-label={`${player.fullName} headshot`}
@@ -481,7 +485,7 @@ function PlayerHeadshot({
           alt={`${player.fullName} headshot`}
           loading="lazy"
           onError={() => setErrored(true)}
-          className={`relative z-10 w-full rounded-xl object-cover ring-1 ring-slate-200 dark:ring-white/10 ${
+          className={`relative z-10 w-full rounded-xl object-cover ring-1 ring-line ${
             matchStatsHeight ? 'h-full' : 'aspect-[260/190]'
           }`}
         />
@@ -522,19 +526,19 @@ function Stat({
 }) {
   return (
     <div
-      className={`rounded-lg border border-slate-200 bg-slate-50 px-3 dark:border-white/10 dark:bg-slate-950/40 ${
+      className={`rounded-xl border border-line bg-panel px-3 ${
         compact ? 'py-1.5' : 'py-2.5'
       }`}
     >
       <div
-        className={`uppercase tracking-wider text-slate-500 dark:text-slate-400 ${
+        className={`uppercase tracking-wider text-ink-faint ${
           dense ? 'text-[10px]' : 'text-[11px]'
         }`}
       >
         {label}
       </div>
       <div
-        className={`font-semibold tabular-nums text-slate-900 dark:text-white ${
+        className={`font-semibold tabular-nums text-ink ${
           dense ? 'text-base' : compact ? 'text-lg' : 'text-xl'
         }`}
       >
@@ -546,9 +550,9 @@ function Stat({
 
 function MobileStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between rounded-md border border-slate-200 bg-slate-50 px-1 py-1.5 dark:border-white/10 dark:bg-slate-950/40">
-      <div className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
-      <div className="text-sm font-semibold tabular-nums text-slate-900 dark:text-white">{value}</div>
+    <div className="flex items-baseline justify-between rounded-lg border border-line bg-panel px-2 py-1.5">
+      <div className="text-[10px] uppercase tracking-wide text-ink-faint">{label}</div>
+      <div className="text-sm font-semibold tabular-nums text-ink">{value}</div>
     </div>
   );
 }
@@ -576,18 +580,18 @@ function SeasonStatsPanel({
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-white/10 dark:bg-slate-950/40">
+      <div className="rounded-xl border border-line bg-panel p-3">
         <div className="flex items-center justify-between gap-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
             Season stats
           </div>
-          <div className="h-6 w-16 animate-pulse rounded-md bg-slate-200 court-skeleton-legend dark:bg-slate-800/60" />
+          <div className="h-6 w-16 animate-pulse rounded-md bg-line court-skeleton-legend" />
         </div>
         <div className="mt-2 grid grid-cols-3 gap-2">
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="h-12 animate-pulse rounded-md bg-slate-200 court-skeleton-legend dark:bg-slate-800/60"
+              className="h-12 animate-pulse rounded-md bg-line court-skeleton-legend"
             />
           ))}
         </div>
@@ -597,7 +601,7 @@ function SeasonStatsPanel({
 
   if (!hasAnyStats && !error) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-500">
+      <div className="rounded-xl border border-line bg-panel p-3 text-xs text-ink-muted">
         No season stats on file for this player yet.
       </div>
     );
@@ -607,7 +611,7 @@ function SeasonStatsPanel({
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
             Season stats
           </div>
           <SeasonTypeToggle
@@ -632,7 +636,7 @@ function SeasonStatsPanel({
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
             Season stats
           </div>
           <SeasonTypeToggle
@@ -643,7 +647,7 @@ function SeasonStatsPanel({
             ariaLabel="Season stats type"
           />
         </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-500">
+        <div className="rounded-xl border border-line bg-panel p-3 text-xs text-ink-muted">
           No {statsSeasonType.toLowerCase()} stats on file for this player yet.
         </div>
       </div>
@@ -678,13 +682,13 @@ function SeasonStatsPanel({
   ];
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-white/10 dark:bg-slate-950/40">
+    <div className="rounded-xl border border-line bg-panel p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
             Season stats
           </div>
-          <div className="text-[10px] text-slate-500">
+          <div className="text-[10px] text-ink-faint">
             {statsSeasonType} · per game
           </div>
         </div>
@@ -705,39 +709,39 @@ function SeasonStatsPanel({
         ))}
       </div>
 
-      <div className="mt-2 space-y-1.5 border-t border-slate-200 pt-2 text-sm dark:border-white/5">
+      <div className="mt-2 space-y-1.5 border-t border-line pt-2 text-sm">
         {shootingLines.map(({ label, pct, line }) => (
           <div key={label} className="flex items-baseline justify-between gap-2">
-            <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <div className="text-[11px] uppercase tracking-wider text-ink-faint">
               {label}
             </div>
-            <div className="tabular-nums text-slate-900 dark:text-white">
+            <div className="tabular-nums text-ink">
               <span className="font-semibold">{pct}</span>
-              <span className="text-slate-400 dark:text-slate-500"> · </span>
-              <span className="text-slate-600 dark:text-slate-300">{line}</span>
+              <span className="text-ink-faint"> · </span>
+              <span className="text-ink-muted">{line}</span>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 border-t border-slate-200 pt-2 text-[11px] text-slate-500 dark:border-white/5 dark:text-slate-400">
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 border-t border-line pt-2 text-[11px] text-ink-faint">
         <span>
-          GP <span className="font-medium text-slate-700 dark:text-slate-200">{stats.gp}</span>
+          GP <span className="font-medium text-ink">{stats.gp}</span>
         </span>
         <span>
-          MIN <span className="font-medium text-slate-700 dark:text-slate-200">{fmtMinutes(stats.min)}</span>
+          MIN <span className="font-medium text-ink">{fmtMinutes(stats.min)}</span>
         </span>
         <span>
           +/−{' '}
           <span
             className={`font-medium ${
               stats.plusMinus === null
-                ? 'text-slate-700 dark:text-slate-200'
+                ? 'text-ink'
                 : stats.plusMinus > 0
                   ? 'text-emerald-600 dark:text-emerald-400'
                   : stats.plusMinus < 0
                     ? 'text-rose-600 dark:text-rose-400'
-                    : 'text-slate-700 dark:text-slate-200'
+                    : 'text-ink'
             }`}
           >
             {fmtPlusMinus(stats.plusMinus)}
@@ -758,48 +762,48 @@ function ZoneDetailCard({
   emptyLabel: string;
 }) {
   return (
-    <div className="rounded-lg border border-cyan-400/50 bg-cyan-50 p-3 text-sm shadow-sm dark:border-cyan-400/35 dark:bg-slate-950/55 dark:shadow-[0_0_24px_-4px_rgba(34,211,238,0.35)]">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-700 dark:text-cyan-300/95">
+    <div className="rounded-xl border border-accent/40 bg-panel p-3 text-sm shadow-sm">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-accent">
         {title}
       </div>
-      <div className="mt-0.5 font-medium text-slate-900 dark:text-white">{zonePayload.zone.label}</div>
+      <div className="mt-0.5 font-medium text-ink">{zonePayload.zone.label}</div>
       {zonePayload.agg && zonePayload.agg.fga > 0 ? (
-        <div className="mt-2 space-y-1.5 text-slate-700 dark:text-slate-200">
+        <div className="mt-2 space-y-1.5 text-ink">
           <div>
-            <span className="text-slate-500 dark:text-slate-400">FGM/FGA </span>
-            <span className="font-semibold text-slate-900 dark:text-white">
+            <span className="text-ink-muted">FGM/FGA </span>
+            <span className="font-semibold text-ink">
               {zonePayload.agg.fgm} / {zonePayload.agg.fga}
             </span>
           </div>
           <div>
-            <span className="text-slate-500 dark:text-slate-400">FG% </span>
-            <span className="font-semibold text-slate-900 dark:text-white">
+            <span className="text-ink-muted">FG% </span>
+            <span className="font-semibold text-ink">
               {fmtPct(zonePayload.agg.fgPct)}
             </span>
-            <span className="text-slate-500"> · league </span>
+            <span className="text-ink-muted"> · league </span>
             <span>{fmtPct(zonePayload.agg.leagueFgPct)}</span>
             {zonePayload.agg.fgPctDelta !== null && (
               <span
                 className={
                   zonePayload.agg.fgPctDelta >= 0
-                    ? ' ml-1 font-medium text-emerald-400'
-                    : ' ml-1 font-medium text-rose-400'
+                    ? ' ml-1 font-medium text-emerald-600 dark:text-emerald-400'
+                    : ' ml-1 font-medium text-rose-600 dark:text-rose-400'
                 }
               >
                 ({fmtSignedPp(zonePayload.agg.fgPctDelta)})
               </span>
             )}
           </div>
-          <p className="text-xs leading-snug text-slate-500 dark:text-slate-400">
+          <p className="text-xs leading-snug text-ink-muted">
             {zoneVsLeagueTier(zonePayload.agg)}
           </p>
           {(() => {
             const u = unusualVsLeagueLine(zonePayload.agg);
-            return u ? <p className="text-xs leading-snug text-slate-500">{u}</p> : null;
+            return u ? <p className="text-xs leading-snug text-ink-muted">{u}</p> : null;
           })()}
         </div>
       ) : (
-        <p className="mt-2 text-xs text-slate-400">{emptyLabel}</p>
+        <p className="mt-2 text-xs text-ink-faint">{emptyLabel}</p>
       )}
     </div>
   );
@@ -807,9 +811,9 @@ function ZoneDetailCard({
 
 function CourtSkeleton() {
   const { resolvedTheme } = useTheme();
-  const courtBg = resolvedTheme === 'light' ? '#e8edf4' : '#0e1422';
-  const zoneFill = resolvedTheme === 'light' ? 'rgb(203 213 225 / 0.55)' : 'rgb(51 65 85 / 0.55)';
-  const lineStroke = resolvedTheme === 'light' ? 'rgb(148 163 184 / 0.55)' : 'rgb(71 85 105 / 0.45)';
+  const courtBg = resolvedTheme === 'light' ? '#efece7' : '#0e1219';
+  const zoneFill = resolvedTheme === 'light' ? 'rgb(211 208 200 / 0.55)' : 'rgb(51 59 77 / 0.55)';
+  const lineStroke = resolvedTheme === 'light' ? 'rgb(150 154 163 / 0.55)' : 'rgb(102 110 125 / 0.45)';
 
   return (
     <div className="relative w-full">
@@ -849,9 +853,9 @@ function CourtSkeleton() {
           ))}
         </g>
       </svg>
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-faint">
         <span>vs league</span>
-        <div className="court-skeleton-legend h-3 w-48 rounded-md bg-slate-300 dark:bg-slate-700/60" />
+        <div className="court-skeleton-legend h-3 w-48 rounded-md bg-line" />
       </div>
     </div>
   );
@@ -859,9 +863,9 @@ function CourtSkeleton() {
 
 function EmptyState() {
   return (
-    <div className="grid h-[60vh] place-items-center text-center text-slate-500 dark:text-slate-400">
+    <div className="grid h-[60vh] place-items-center text-center text-ink-muted">
       <div className="space-y-2">
-        <div className="text-lg font-medium text-slate-800 dark:text-slate-200">
+        <div className="font-display text-2xl font-bold uppercase tracking-wide text-ink">
           Where do they shoot from?
         </div>
         <div className="text-sm">
@@ -875,7 +879,7 @@ function EmptyState() {
 function LoadingState({ player }: { player: Player }) {
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+      <div className="flex items-center gap-2 text-xs text-ink-muted">
         <Spinner />
         <span>Loading shots for {player.fullName}…</span>
       </div>
@@ -893,9 +897,11 @@ function NoShotsState({
 }) {
   const description = `${player.fullName} has no ${seasonType.toLowerCase()} attempts in 2025–26.`;
   return (
-    <div className="grid h-[60vh] place-items-center text-center text-slate-500 dark:text-slate-400">
+    <div className="grid h-[60vh] place-items-center text-center text-ink-muted">
       <div className="space-y-1">
-        <div className="text-lg font-medium text-slate-800 dark:text-slate-200">No shots yet</div>
+        <div className="font-display text-2xl font-bold uppercase tracking-wide text-ink">
+          No shots yet
+        </div>
         <div className="text-sm">{description}</div>
       </div>
     </div>
@@ -908,7 +914,7 @@ function ErrorState({ message }: { message: string }) {
       <div className="space-y-2">
         <div className="text-lg font-medium">Couldn’t load shots</div>
         <div className="max-w-sm text-sm text-rose-700 dark:text-rose-300/80">{message}</div>
-        <div className="text-xs text-slate-500">
+        <div className="text-xs text-ink-faint">
           The NBA stats API is sometimes blocked from cloud IPs (Akamai bot
           protection). Try again in a moment, or see the README for the Python
           sidecar fallback.
@@ -921,7 +927,7 @@ function ErrorState({ message }: { message: string }) {
 function Spinner() {
   return (
     <svg
-      className="h-5 w-5 shrink-0 animate-spin text-slate-500 dark:text-slate-300"
+      className="h-5 w-5 shrink-0 animate-spin text-ink-muted"
       viewBox="0 0 24 24"
       fill="none"
     >
