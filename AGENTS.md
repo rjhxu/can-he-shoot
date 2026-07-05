@@ -19,7 +19,10 @@ The app has no local datastore — all real data lives in external services, so 
 
 Without these secrets the pages still compile and render (HTTP 200), but data-backed features degrade gracefully: `/stats` shows an empty roster and `POST /api/ask` returns `503`. There is no local seed/fixture path — the Supabase DB must be populated (via `scripts/nba_scraper.py`) for real answers.
 
-Put the secrets in a git-ignored `.env.local` (see `.env.example`). Next.js auto-loads `.env.local`; relying on injected shell env vars is unreliable because a long-lived tmux server may not inherit them. The dev startup log printing `Environments: .env.local` confirms they were loaded.
+Put the secrets in a git-ignored `.env.local` (see `.env.example`). Next.js auto-loads `.env.local`; relying on injected shell env vars is unreliable because a long-lived tmux server may not inherit them. The dev startup log printing `Environments: .env.local` confirms they were loaded. The secrets are injected into the Cloud VM as shell env vars, so on a fresh VM you can (re)generate `.env.local` from them before starting the dev server:
+```bash
+for v in SUPABASE_URL SUPABASE_ANON_KEY COHERE_API_KEY ASK_READONLY_DATABASE_URL SUPABASE_SERVICE_ROLE_KEY; do echo "$v=${!v}"; done > .env.local
+```
 
 **IPv6 gotcha for `ASK_READONLY_DATABASE_URL` (Ask feature):** the Cloud VM is IPv4-only. Supabase's *direct* DB host `db.<ref>.supabase.co:5432` is IPv6-only, so a direct connection string fails with `ENETUNREACH` and `/api/ask` returns `500` even though Cohere succeeds and valid SQL is generated. You MUST use the **transaction-mode pooler** URL instead (IPv4-capable), as the README's "Ask readonly setup" already recommends:
 `postgresql://ask_readonly.<ref>:<password>@aws-1-us-east-1.pooler.supabase.com:6543/postgres`
