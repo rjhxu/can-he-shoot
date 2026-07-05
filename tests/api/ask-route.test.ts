@@ -56,20 +56,20 @@ describe('POST /api/ask', () => {
       { personId: 2544, name: 'LeBron James', teamAbbreviation: 'LAL' },
     ]);
     mockSummarizeResults.mockResolvedValueOnce(
-      'LeBron James is averaging 24.8 points per game this season.',
+      'LeBron James averaged 24.8 points per game this season.',
     );
 
     const { POST } = await import('@/app/api/ask/route');
     const response = await POST(
-      makeRequest({ question: 'How many points does LeBron average this season?' }),
+      makeRequest({ question: 'How many points did LeBron average this season?' }),
     );
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body).toMatchObject({
-      question: 'How many points does LeBron average this season?',
+      question: 'How many points did LeBron average this season?',
       columns: ['display_first_last', 'pts'],
-      answer: 'LeBron James is averaging 24.8 points per game this season.',
+      answer: 'LeBron James averaged 24.8 points per game this season.',
       playerLinks: [{ personId: 2544, name: 'LeBron James', teamAbbreviation: 'LAL' }],
     });
     expect(body.sql).toContain('LIMIT');
@@ -124,7 +124,7 @@ describe('POST /api/ask', () => {
 
     const { POST } = await import('@/app/api/ask/route');
     const response = await POST(
-      makeRequest({ question: 'How does he shoot against the Celtics?' }),
+      makeRequest({ question: 'How did he shoot against the Celtics?' }),
     );
     const body = await response.json();
 

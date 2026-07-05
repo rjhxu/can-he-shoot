@@ -4,6 +4,7 @@ const select = vi.fn();
 const eq = vi.fn();
 const neq = vi.fn();
 const order = vi.fn();
+const inFn = vi.fn();
 
 const mockSupabase = {
   from: vi.fn(),
@@ -111,5 +112,75 @@ describe('extractPlayerNamesFromResults', () => {
         [{ player_name: 'Stephen Curry', pts: 27 }],
       ),
     ).toEqual(['Stephen Curry']);
+  });
+});
+
+describe('resolvePlayerLinksForAsk', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSupabase.from.mockReturnValue({ select });
+    select.mockReturnValue({ in: inFn });
+    inFn.mockResolvedValue({ data: [], error: null });
+  });
+
+  it('prefers SQL name filters over wrong referenced_player_ids', async () => {
+    const ilike = vi.fn().mockResolvedValue({
+      data: [
+        {
+          person_id: 201935,
+          display_first_last: 'James Harden',
+          team_abbreviation: 'LAC',
+        },
+      ],
+      error: null,
+    });
+    select.mockReturnValue({ ilike });
+
+    const sql = `
+      SELECT period, COUNT(*) AS attempts
+      FROM nba_shots s
+      JOIN nba_players p ON p.person_id = s.person_id
+      WHERE p.display_first_last ILIKE '%harden%'
+      GROUP BY period
+      LIMIT 50
+    `;
+
+    const { resolvePlayerLinksForAsk } = await import('@/lib/nba/players');
+    const links = await resolvePlayerLinksForAsk(
+      [201942],
+      ['period', 'attempts', 'fg_pct'],
+      [{ period: 4, attempts: 189, fg_pct: 0.46 }],
+      sql,
+    );
+
+    expect(links).toEqual([
+      { personId: 201935, name: 'James Harden', teamAbbreviation: 'LAC' },
+    ]);
+    expect(inFn).not.toHaveBeenCalled();
+  });
+
+  it('uses person_id from results when present', async () => {
+    inFn.mockResolvedValueOnce({
+      data: [
+        {
+          person_id: 201935,
+          display_first_last: 'James Harden',
+          team_abbreviation: 'LAC',
+        },
+      ],
+      error: null,
+    });
+
+    const { resolvePlayerLinksForAsk } = await import('@/lib/nba/players');
+    const links = await resolvePlayerLinksForAsk(
+      [201942],
+      ['person_id', 'period', 'fg_pct'],
+      [{ person_id: 201935, period: 4, fg_pct: 0.46 }],
+      "WHERE p.display_first_last ILIKE '%harden%'",
+    );
+
+    expect(links).toEqual([
+      { personId: 201935, name: 'James Harden', teamAbbreviation: 'LAC' },
+    ]);
   });
 });

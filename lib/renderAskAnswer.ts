@@ -17,6 +17,46 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function ordinalSuffix(n: number): string {
+  const mod100 = Math.abs(n) % 100;
+  if (mod100 >= 11 && mod100 <= 13) return 'th';
+  switch (Math.abs(n) % 10) {
+    case 1:
+      return 'st';
+    case 2:
+      return 'nd';
+    case 3:
+      return 'rd';
+    default:
+      return 'th';
+  }
+}
+
+function formatOrdinal(n: number): string {
+  return `${n}${ordinalSuffix(n)}`;
+}
+
+const ORDINAL_SUFFIX = /^(st|nd|rd|th)\b/i;
+
+function extendWithOrdinalSuffix(fullText: string, startIndex: number, matched: string): {
+  text: string;
+  length: number;
+} {
+  if (!/^\d+$/.test(matched)) {
+    return { text: matched, length: matched.length };
+  }
+
+  const suffixMatch = fullText.slice(startIndex + matched.length).match(ORDINAL_SUFFIX);
+  if (!suffixMatch) {
+    return { text: matched, length: matched.length };
+  }
+
+  return {
+    text: matched + suffixMatch[0],
+    length: matched.length + suffixMatch[0].length,
+  };
+}
+
 /** Build display strings for numeric values that may appear in the answer. */
 export function extractStatStringsFromRows(rows: Record<string, unknown>[]): string[] {
   const stats = new Set<string>();
@@ -27,6 +67,7 @@ export function extractStatStringsFromRows(rows: Record<string, unknown>[]): str
 
       if (Number.isInteger(value)) {
         stats.add(String(value));
+        stats.add(formatOrdinal(value));
         continue;
       }
 
@@ -59,9 +100,16 @@ function findMatchAt(
 
   const boldMatch = rest.match(/^\*\*([^*]+)\*\*/);
   if (boldMatch) {
+    let text = boldMatch[1];
+    let length = boldMatch[0].length;
+    const suffixMatch = rest.slice(length).match(ORDINAL_SUFFIX);
+    if (suffixMatch && /^\d+$/.test(text.trim())) {
+      text += suffixMatch[0];
+      length += suffixMatch[0].length;
+    }
     best = {
-      length: boldMatch[0].length,
-      segment: { type: 'stat', text: boldMatch[1] },
+      length,
+      segment: { type: 'stat', text },
     };
   }
 
@@ -96,9 +144,19 @@ function findMatchAt(
     const pattern = new RegExp(`^${escapeRegExp(stat)}`);
     const match = rest.match(pattern);
     if (!match) continue;
+    const extended = extendWithOrdinalSuffix(rest, 0, match[0]);
     const candidate: MatchCandidate = {
-      length: match[0].length,
-      segment: { type: 'stat', text: match[0] },
+      length: extended.length,
+      segment: { type: 'stat', text: extended.text },
+    };
+    if (!best || candidate.length > best.length) best = candidate;
+  }
+
+  const ordinalMatch = rest.match(/^(\d+(?:st|nd|rd|th))\b/i);
+  if (ordinalMatch) {
+    const candidate: MatchCandidate = {
+      length: ordinalMatch[0].length,
+      segment: { type: 'stat', text: ordinalMatch[1] },
     };
     if (!best || candidate.length > best.length) best = candidate;
   }

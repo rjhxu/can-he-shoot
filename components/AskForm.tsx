@@ -26,7 +26,7 @@ export default function AskForm({ onSubmit, loading, initialValue = '' }: Props)
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Does Steph shoot better in the 4th quarter?"
+          placeholder="Did Steph shoot better in the 4th quarter?"
           disabled={loading}
           className="min-w-0 flex-1 bg-transparent py-2 text-base text-ink placeholder:text-ink-faint focus:outline-none disabled:opacity-60"
         />

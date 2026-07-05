@@ -1,4 +1,5 @@
 import { unstable_cache } from 'next/cache';
+import { extractPlayerNameFilterGroups } from '@/lib/sql/playerFilter';
 import { getSupabaseServerClient } from '@/lib/supabase';
 import type { Player } from './types';
 
@@ -42,32 +43,84 @@ export interface AskPlayerLink {
   teamAbbreviation: string;
 }
 
-/** Resolve shot-chart links from Cohere IDs, then query result columns as fallback. */
+/** Resolve players matching name ILIKE filters embedded in generated SQL. */
+export async function resolvePlayersFromSqlNameFilters(sql: string): Promise<AskPlayerLink[]> {
+  const groups = extractPlayerNameFilterGroups(sql);
+  if (groups.length === 0) return [];
+
+  const supabase = getSupabaseServerClient();
+  const links: AskPlayerLink[] = [];
+  const seen = new Set<number>();
+
+  for (const patterns of groups) {
+    let query = supabase
+      .from('nba_players')
+      .select('person_id, display_first_last, team_abbreviation');
+
+    for (const pattern of patterns) {
+      query = query.ilike('display_first_last', pattern);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      throw new Error(`Failed to resolve players from SQL name filters: ${error.message}`);
+    }
+
+    for (const row of data ?? []) {
+      const personId = Number(row.person_id);
+      if (!Number.isInteger(personId) || personId <= 0 || seen.has(personId)) continue;
+      seen.add(personId);
+      links.push({
+        personId,
+        name: String(row.display_first_last ?? ''),
+        teamAbbreviation: String(row.team_abbreviation ?? ''),
+      });
+    }
+  }
+
+  return links;
+}
+
+function dedupePlayerLinks(links: AskPlayerLink[]): AskPlayerLink[] {
+  const seen = new Set<number>();
+  return links.filter((link) => {
+    if (seen.has(link.personId)) return false;
+    seen.add(link.personId);
+    return true;
+  });
+}
+
+/** Resolve shot-chart links from query results, SQL name filters, then Cohere IDs. */
 export async function resolvePlayerLinksForAsk(
   referencedIds: number[],
   columns: string[],
   rows: Record<string, unknown>[],
+  sql?: string,
 ): Promise<AskPlayerLink[]> {
-  const ids = [...new Set([...referencedIds, ...extractPersonIdsFromResults(columns, rows)])];
+  const idsFromResults = extractPersonIdsFromResults(columns, rows);
+  let links: AskPlayerLink[];
 
-  let links = await resolvePlayersByIds(ids);
+  if (idsFromResults.length > 0) {
+    links = await resolvePlayersByIds(idsFromResults);
+  } else if (sql) {
+    links = await resolvePlayersFromSqlNameFilters(sql);
+  } else {
+    links = [];
+  }
+
+  if (links.length === 0) {
+    links = await resolvePlayersByIds([...new Set(referencedIds)]);
+  }
+
   if (links.length === 0) {
     links = await resolvePlayersByNames(extractPlayerNamesFromResults(columns, rows));
   }
 
-  const seen = new Set<number>();
-  return links
-    .filter((link) => {
-      if (seen.has(link.personId)) return false;
-      seen.add(link.personId);
-      return true;
-    })
-    .map((link) => ({
-      ...link,
-      teamAbbreviation:
-        teamFromRowsForPlayer(link.personId, link.name, columns, rows) ??
-        link.teamAbbreviation,
-    }));
+  return dedupePlayerLinks(links).map((link) => ({
+    ...link,
+    teamAbbreviation:
+      teamFromRowsForPlayer(link.personId, link.name, columns, rows) ?? link.teamAbbreviation,
+  }));
 }
 
 export async function resolvePlayersByIds(personIds: number[]): Promise<AskPlayerLink[]> {

@@ -124,12 +124,12 @@ Server  → getActivePlayers()          → Supabase nba_players        (revalid
 
 ### Acceptance checklist
 
-- "How many points does LeBron average this season?"
-- "What's Steph Curry's 3PT% from the corner?"
-- "Which player has the best free throw percentage?"
-- "Compare Luka and Jokic's shot selection by zone"
-- "Does [player] shoot better in the 4th quarter?"
-- Out-of-scope question (e.g. "how does he shoot against the Celtics") — graceful empty result, no hallucinated numbers
+- "How many points did LeBron average this season?"
+- "What was Steph Curry's 3PT% from the corner?"
+- "Which player had the best free throw percentage?"
+- "How did Luka and Jokic compare in shot selection by zone?"
+- "Did [player] shoot better in the 4th quarter?"
+- Out-of-scope question (e.g. "how did he shoot against the Celtics") — graceful empty result, no hallucinated numbers
 
 ## Shot maps
 

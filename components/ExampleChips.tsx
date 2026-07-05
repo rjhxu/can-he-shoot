@@ -1,12 +1,12 @@
 'use client';
 
 export const EXAMPLE_QUESTIONS = [
-  'How many points does LeBron average this season?',
-  "What's Steph Curry's 3PT% from the corner?",
-  'Which player has the best free throw percentage?',
-  "Compare Luka and Jokic's shot selection by zone",
-  'Does Stephen Curry shoot better in the 4th quarter?',
-  'How does LeBron shoot against the Celtics?',
+  'How many points did LeBron average this season?',
+  "What was Steph Curry's 3PT% from the corner?",
+  'Which player had the best free throw percentage?',
+  "How did Luka and Jokic compare in shot selection by zone?",
+  'Did Stephen Curry shoot better in the 4th quarter?',
+  'How did LeBron shoot against the Celtics?',
 ] as const;
 
 interface Props {

@@ -14,11 +14,12 @@ const ctx = {
 };
 
 describe('extractStatStringsFromRows', () => {
-  it('includes integer, decimal, and percentage variants', () => {
-    const stats = extractStatStringsFromRows([{ pts: 24.8, fg_pct: 0.482, gp: 70 }]);
+  it('includes integer, decimal, percentage, and ordinal variants', () => {
+    const stats = extractStatStringsFromRows([{ pts: 24.8, fg_pct: 0.482, gp: 70, period: 2 }]);
     expect(stats).toContain('24.8');
     expect(stats).toContain('48.2%');
     expect(stats).toContain('70');
+    expect(stats).toContain('2nd');
   });
 });
 
@@ -75,5 +76,26 @@ describe('parseAnswerSegments', () => {
   it('does not false-match partial team abbrevs', () => {
     const segments = parseAnswerSegments('ATLANTA is not a team code here.', ctx);
     expect(segments.every((s) => s.type !== 'team')).toBe(true);
+  });
+
+  it('styles ordinal suffixes with the stat', () => {
+    const quarterCtx = {
+      ...ctx,
+      rows: [{ period: 2, attempts: 268, fg_pct: 0.403 }],
+      columns: ['period', 'attempts', 'fg_pct'],
+    };
+
+    expect(parseAnswerSegments('His **2**nd quarter percentage is **40.3%**.', quarterCtx)).toEqual([
+      { type: 'text', text: 'His ' },
+      { type: 'stat', text: '2nd' },
+      { type: 'text', text: ' quarter percentage is ' },
+      { type: 'stat', text: '40.3%' },
+      { type: 'text', text: '.' },
+    ]);
+
+    expect(parseAnswerSegments('He shoots better in the 4th quarter.', quarterCtx)).toContainEqual({
+      type: 'stat',
+      text: '4th',
+    });
   });
 });

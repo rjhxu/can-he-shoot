@@ -129,7 +129,12 @@ async function handleAsk(question: string) {
   console.log('[/api/ask] executing SQL:', sql);
 
   const { columns, rows } = await queryReadonly(sql);
-  const playerLinks = await resolvePlayerLinksForAsk(referenced_player_ids, columns, rows);
+  const playerLinks = await resolvePlayerLinksForAsk(
+    referenced_player_ids,
+    columns,
+    rows,
+    sql,
+  );
   const answer = await summarizeResults(question, rows);
 
   return {

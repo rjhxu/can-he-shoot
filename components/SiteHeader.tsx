@@ -6,7 +6,7 @@ import ThemeToggle from '@/components/ThemeToggle';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Ask' },
-  { href: '/stats', label: 'Players' },
+  { href: '/stats', label: 'Shotchart' },
 ] as const;
 
 function isActive(pathname: string, href: string): boolean {
