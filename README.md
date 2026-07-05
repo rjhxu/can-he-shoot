@@ -30,11 +30,11 @@ Built as a portfolio project demonstrating **LLM integration**, **text-to-SQL**,
 
 **Ask** — natural-language question → LLM-generated SQL → real answer with data table and a deep link to the shot chart:
 
-<video src="https://github.com/rjhxu/can-he-shoot/raw/main/docs/demos/ask-demo.mp4" controls></video>
+https://github.com/user-attachments/assets/ef45f55c-a0a4-4f96-a2c7-d38f85e638a2
 
 **Shot maps** — search a player, explore zone heatmaps and hexbin charts, and toggle regular season / playoffs:
 
-<video src="https://github.com/rjhxu/can-he-shoot/raw/main/docs/demos/shot-chart-demo.mp4" controls></video>
+https://github.com/user-attachments/assets/451b3f35-d993-4c9f-9b14-cd3419fd9d35
 
 ---
 
