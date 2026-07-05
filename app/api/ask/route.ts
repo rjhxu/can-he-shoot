@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { generateSql, summarizeResults } from '@/lib/cohere/client';
+import {
+  buildPlayerNameLookupSql,
+  getUnsupportedQuestionMessage,
+  hasHallucinatedOpponentFilter,
+  OPPONENT_QUESTION_MESSAGE,
+} from '@/lib/ask/unsupportedQuestion';
 import { isDbTimeoutError, queryReadonly } from '@/lib/db/readonlyClient';
-import { resolvePlayerLinksForAsk } from '@/lib/nba/players';
+import { resolvePlayerLinksForAsk, resolvePlayersFromSqlNameFilters } from '@/lib/nba/players';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { applyReferencedPlayerIds } from '@/lib/sql/applyReferencedPlayerIds';
+import { personIdsForSqlRewrite } from '@/lib/sql/personIdsForRewrite';
 import { validateSql } from '@/lib/sql/validate';
 
 export const dynamic = 'force-dynamic';
@@ -123,9 +131,49 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleAsk(question: string) {
+  const unsupportedMessage = getUnsupportedQuestionMessage(question);
+  if (unsupportedMessage) {
+    const lookupSql = buildPlayerNameLookupSql(question);
+    const playerLinks = lookupSql
+      ? await resolvePlayersFromSqlNameFilters(lookupSql)
+      : [];
+
+    return {
+      question,
+      sql: '',
+      columns: [],
+      rows: [],
+      answer: unsupportedMessage,
+      playerLinks,
+    };
+  }
+
   const { sql: rawSql, referenced_player_ids } = await generateSql(question);
 
-  const sql = validateSql(rawSql);
+  const resolvedFromNames = await resolvePlayersFromSqlNameFilters(rawSql);
+  const personIds = personIdsForSqlRewrite(
+    resolvedFromNames.map((player) => player.personId),
+    referenced_player_ids,
+  );
+  const sql = validateSql(applyReferencedPlayerIds(rawSql, personIds));
+
+  if (hasHallucinatedOpponentFilter(sql)) {
+    const playerLinks = await resolvePlayerLinksForAsk(
+      referenced_player_ids,
+      [],
+      [],
+      sql,
+    );
+    return {
+      question,
+      sql,
+      columns: [],
+      rows: [],
+      answer: OPPONENT_QUESTION_MESSAGE,
+      playerLinks,
+    };
+  }
+
   console.log('[/api/ask] executing SQL:', sql);
 
   const { columns, rows } = await queryReadonly(sql);

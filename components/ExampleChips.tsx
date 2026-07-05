@@ -6,7 +6,7 @@ export const EXAMPLE_QUESTIONS = [
   'Which player had the best free throw percentage?',
   "How did Luka and Jokic compare in shot selection by zone?",
   'Did Stephen Curry shoot better in the 4th quarter?',
-  'How did LeBron shoot against the Celtics?',
+  "What's Kevin Durant's FG% in the restricted area?",
 ] as const;
 
 interface Props {

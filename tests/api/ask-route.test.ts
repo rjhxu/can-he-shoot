@@ -5,6 +5,7 @@ const mockGenerateSql = vi.fn();
 const mockSummarizeResults = vi.fn();
 const mockQueryReadonly = vi.fn();
 const mockResolvePlayerLinksForAsk = vi.fn();
+const mockResolvePlayersFromSqlNameFilters = vi.fn();
 const mockCheckRateLimit = vi.fn();
 
 vi.mock('@/lib/cohere/client', () => ({
@@ -20,6 +21,7 @@ vi.mock('@/lib/db/readonlyClient', () => ({
 
 vi.mock('@/lib/nba/players', () => ({
   resolvePlayerLinksForAsk: mockResolvePlayerLinksForAsk,
+  resolvePlayersFromSqlNameFilters: mockResolvePlayersFromSqlNameFilters,
 }));
 
 vi.mock('@/lib/rateLimit', () => ({
@@ -41,6 +43,7 @@ describe('POST /api/ask', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCheckRateLimit.mockReturnValue({ allowed: true });
+    mockResolvePlayersFromSqlNameFilters.mockResolvedValue([]);
   });
 
   it('returns the full response shape on success', async () => {
@@ -111,6 +114,27 @@ describe('POST /api/ask', () => {
     expect(body.error).toContain('temporarily unavailable');
   });
 
+  it('returns a clear message for opponent questions without calling Cohere', async () => {
+    mockResolvePlayersFromSqlNameFilters.mockResolvedValueOnce([
+      { personId: 2544, name: 'LeBron James', teamAbbreviation: 'LAL' },
+    ]);
+
+    const { POST } = await import('@/app/api/ask/route');
+    const response = await POST(
+      makeRequest({ question: 'How did LeBron shoot against the Celtics?' }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.answer).toContain("can't answer matchup questions");
+    expect(body.rows).toEqual([]);
+    expect(body.playerLinks).toEqual([
+      { personId: 2544, name: 'LeBron James', teamAbbreviation: 'LAL' },
+    ]);
+    expect(mockGenerateSql).not.toHaveBeenCalled();
+    expect(mockQueryReadonly).not.toHaveBeenCalled();
+  });
+
   it('returns 200 with empty results', async () => {
     mockGenerateSql.mockResolvedValueOnce({
       sql: 'SELECT 1 WHERE false LIMIT 1',
@@ -124,7 +148,7 @@ describe('POST /api/ask', () => {
 
     const { POST } = await import('@/app/api/ask/route');
     const response = await POST(
-      makeRequest({ question: 'How did he shoot against the Celtics?' }),
+      makeRequest({ question: 'What was his corner three percentage?' }),
     );
     const body = await response.json();
 

@@ -12,6 +12,7 @@ Rules:
 - Always join to nba_players by person_id when a player name is mentioned.
 - Match player names with ILIKE '%token%' on each name part separately (first name, last name), never exact equality — users type informally (e.g. "steph" not "Stephen Curry"). Never use a multi-word ILIKE copied from the question (e.g. ILIKE '%steph curry%' fails because the DB stores "Stephen Curry"). Use AND between parts: ILIKE '%steph%' AND ILIKE '%curry%'.
 - When querying nba_player_stats, always filter per_mode = 'PerGame' AND measure_type = 'Base', and default season = '${CURRENT_SEASON}' and season_type = 'Regular Season' unless the question specifies otherwise. With PerGame rows, fga/fta/fg3a/fgm/pts/etc. are per-game averages — multiply by gp for season totals (e.g. (st.fga * st.gp) >= 200).
+- Stat abbreviations: FGA = field goal attempts (use st.fga per game or st.fga * st.gp for season total). FG% = field goal percentage (use st.fg_pct). FG3% / 3PT% = st.fg3_pct. FT% = st.ft_pct. There is no "FGA%" — if the user says FGA%, treat it as FG%.
 - For team-specific stats questions, filter st.team_abbreviation (e.g. 'TOR'), not p.team_abbreviation.
 - shot_made_flag is 1 or 0; use AVG(shot_made_flag) for a shooting percentage.
 - Corner 3PT: shot_zone_basic IN ('Left Corner 3', 'Right Corner 3').
@@ -21,7 +22,8 @@ Rules:
 - When comparing quarters, filter s.period <= 4 unless overtime is explicitly asked.
 - Always populate referenced_player_ids with every person_id the question is about (named players in WHERE, or all person_ids returned for ranking/list queries). Use [] only when no specific player is involved.
 - For best/worst/highest/lowest rankings, enforce minimum sample sizes: nba_shots GROUP BY queries use HAVING COUNT(*) >= 100; ft_pct leaders require (st.fta * st.gp) >= 100; fg3_pct require (st.fg3a * st.gp) >= 100; fg_pct require (st.fga * st.gp) >= 200; pts/reb/ast/stl/blk/tov leaders require gp >= 20.
-- If the question can't be answered from this schema (e.g. asks about opponents, injuries), return a SELECT that returns zero rows rather than guessing.
+- shot_zone_basic values are court zones only: 'Restricted Area', 'In The Paint (Non-RA)', 'Mid-Range', 'Left Corner 3', 'Right Corner 3', 'Above the Break 3', 'Backcourt'. Never put team names in shot_zone_basic.
+- If the question can't be answered from this schema (e.g. asks about opponents/matchups, injuries), return SELECT ... WHERE false LIMIT 1 — never guess by mapping teams to shot zones or other columns.
 
 Examples (respond with JSON only):
 Q: "Did James Harden shoot better in the 4th quarter?"
@@ -43,9 +45,12 @@ Q: "Who shot the best on the Raptors?"
 {"sql": "SELECT p.person_id, p.display_first_last, st.fg_pct FROM nba_player_stats st JOIN nba_players p ON p.person_id = st.person_id WHERE st.per_mode = 'PerGame' AND st.measure_type = 'Base' AND st.season = '${CURRENT_SEASON}' AND st.season_type = 'Regular Season' AND st.team_abbreviation = 'TOR' AND (st.fga * st.gp) >= 200 ORDER BY st.fg_pct DESC LIMIT 5", "referenced_player_ids": []}
 
 Q: "How did Luka and Jokic compare in shot selection by zone?"
-{"sql": "SELECT p.person_id, p.display_first_last, s.shot_zone_basic, COUNT(*) AS attempts, AVG(s.shot_made_flag)::float AS fg_pct FROM nba_shots s JOIN nba_players p ON p.person_id = s.person_id WHERE p.display_first_last ILIKE '%doncic%' OR p.display_first_last ILIKE '%jokic%' GROUP BY p.person_id, p.display_first_last, s.shot_zone_basic ORDER BY p.display_first_last, attempts DESC LIMIT 50", "referenced_player_ids": [1629029, 203999]}`;
+{"sql": "SELECT p.person_id, p.display_first_last, s.shot_zone_basic, COUNT(*) AS attempts, AVG(s.shot_made_flag)::float AS fg_pct FROM nba_shots s JOIN nba_players p ON p.person_id = s.person_id WHERE p.display_first_last ILIKE '%doncic%' OR p.display_first_last ILIKE '%jokic%' GROUP BY p.person_id, p.display_first_last, s.shot_zone_basic ORDER BY p.display_first_last, attempts DESC LIMIT 50", "referenced_player_ids": [1629029, 203999]}
 
-export const SUMMARY_SYSTEM_PROMPT = `You are the voice of can-he-shoot, a basketball stats app. Given a user's question and JSON query results, write a confident 1-3 sentence answer using specific numbers from the data. Wrap every stat number or percentage in **double asterisks**. Use full player names and 3-letter team abbreviations (e.g. TOR, LAL) when mentioning players or teams. Do not mention SQL, databases, or queries. If results are empty, say plainly that no matching data was found and suggest rephrasing.`;
+Q: "What's Kevin Durant's FG% in the restricted area?"
+{"sql": "SELECT p.person_id, p.display_first_last, COUNT(*) AS attempts, AVG(s.shot_made_flag)::float AS fg_pct FROM nba_shots s JOIN nba_players p ON p.person_id = s.person_id WHERE p.display_first_last ILIKE '%durant%' AND s.shot_zone_basic = 'Restricted Area' AND s.season_type = 'Regular Season' GROUP BY p.person_id, p.display_first_last LIMIT 50", "referenced_player_ids": [201142]}`;
+
+export const SUMMARY_SYSTEM_PROMPT = `You are the voice of can-he-shoot, a basketball stats app. Given a user's question and JSON query results, write a confident 1-3 sentence answer using specific numbers from the data. Wrap every stat number or percentage in **double asterisks**. Use full player names and 3-letter team abbreviations (e.g. TOR, LAL) when mentioning players or teams. Do not mention SQL, databases, or queries. If results are empty because the question asks about opponents/matchups, say plainly that matchup stats aren't available yet. Otherwise if results are empty, say plainly that no matching data was found and suggest rephrasing.`;
 
 export const SQL_RESPONSE_SCHEMA = {
   type: 'object',
