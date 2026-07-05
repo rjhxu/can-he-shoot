@@ -8,3 +8,11 @@ dist
 .DS_Store
 *.log
 .vercel
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+tsconfig.tsbuildinfo

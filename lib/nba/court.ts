@@ -220,11 +220,3 @@ export const ZONES: ZoneDef[] = [
     textPos: { x: -200, y: -260 },
   },
 ];
-
-export const ZONES_BY_KEY: Map<string, ZoneDef> = new Map(
-  ZONES.map((z) => [`${z.basic}|${z.area}`, z]),
-);
-
-export function zoneKey(basic: string, area: string): string {
-  return `${basic}|${area}`;
-}

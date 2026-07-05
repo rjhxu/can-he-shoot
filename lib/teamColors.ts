@@ -10,6 +10,12 @@ const FALLBACK: TeamGlowColors = {
   secondary: '#334155',
 };
 
+export const NBA_TEAM_ABBREVS = [
+  'ATL', 'BOS', 'BKN', 'CHA', 'CHI', 'CLE', 'DAL', 'DEN', 'DET', 'GSW',
+  'HOU', 'IND', 'LAC', 'LAL', 'MEM', 'MIA', 'MIL', 'MIN', 'NOP', 'NYK',
+  'OKC', 'ORL', 'PHI', 'PHX', 'POR', 'SAC', 'SAS', 'TOR', 'UTA', 'WAS',
+] as const;
+
 const MAP: Record<string, TeamGlowColors> = {
   ATL: { primary: '#e03a3e', secondary: '#c1d32f' },
   BOS: { primary: '#007a33', secondary: '#ba9653' },
@@ -47,4 +53,56 @@ export function teamGlowColors(abbrev: string): TeamGlowColors {
   const key = abbrev?.trim().toUpperCase();
   if (!key) return FALLBACK;
   return MAP[key] ?? FALLBACK;
+}
+
+/** Relative luminance (sRGB), 0 = black, 1 = white. */
+function relativeLuminance(hex: string): number {
+  const raw = hex.replace('#', '');
+  const r = parseInt(raw.slice(0, 2), 16) / 255;
+  const g = parseInt(raw.slice(2, 4), 16) / 255;
+  const b = parseInt(raw.slice(4, 6), 16) / 255;
+  const linear = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+}
+
+/** Mix `hex` toward `target` by `t` (0–1) in sRGB space. */
+function mixHex(hex: string, target: string, t: number): string {
+  const a = hex.replace('#', '');
+  const b = target.replace('#', '');
+  const channel = (offset: number) => {
+    const from = parseInt(a.slice(offset, offset + 2), 16);
+    const to = parseInt(b.slice(offset, offset + 2), 16);
+    return Math.round(from + (to - from) * t)
+      .toString(16)
+      .padStart(2, '0');
+  };
+  return `#${channel(0)}${channel(2)}${channel(4)}`;
+}
+
+/** Team color that stays readable on a light (paper/card) background. */
+function teamTextColorLight(abbrev: string): string {
+  const { primary, secondary } = teamGlowColors(abbrev);
+  // Prefer the primary brand color when it's dark enough to read on paper.
+  if (relativeLuminance(primary) <= 0.45) return primary;
+  if (relativeLuminance(secondary) <= 0.45) return secondary;
+  return mixHex(primary, '#191a1e', 0.4);
+}
+
+/** Team color that stays readable on a dark (navy) background. */
+function teamTextColorDark(abbrev: string): string {
+  const { primary, secondary } = teamGlowColors(abbrev);
+  // Prefer the primary brand color when it's bright enough to read on navy.
+  if (relativeLuminance(primary) >= 0.15) return primary;
+  if (relativeLuminance(secondary) >= 0.15) return secondary;
+  const lighter =
+    relativeLuminance(primary) >= relativeLuminance(secondary) ? primary : secondary;
+  return mixHex(lighter, '#ffffff', 0.45);
+}
+
+/**
+ * Readable team color for inline text. Resolves per-theme via CSS
+ * `light-dark()` (the app sets `color-scheme` on `:root` / `.dark`).
+ */
+export function teamTextColor(abbrev: string): string {
+  return `light-dark(${teamTextColorLight(abbrev)}, ${teamTextColorDark(abbrev)})`;
 }

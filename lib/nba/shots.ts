@@ -6,7 +6,7 @@ import type {
   Shot,
 } from './types';
 
-const SEASON = '2025-26';
+import { CURRENT_SEASON } from './season';
 const SHOTS_PAGE_SIZE = 1_000;
 
 async function fetchAllPlayerShots(
@@ -154,5 +154,5 @@ export async function getShots(
     { revalidate: 1_800 },
   );
   const { shots, leagueAverages } = await cachedGetter();
-  return { shots, leagueAverages, season: SEASON, seasonType };
+  return { shots, leagueAverages, season: CURRENT_SEASON, seasonType };
 }

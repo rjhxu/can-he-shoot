@@ -1,6 +1,7 @@
 'use client';
 
 import * as d3 from 'd3';
+import { useTheme } from 'next-themes';
 import { useId, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -13,6 +14,7 @@ import {
 } from '@/lib/nba/court';
 import type { LeagueZoneAverage, Shot, ZoneAggregate } from '@/lib/nba/types';
 import { aggregateByZone } from '@/lib/aggregate';
+import { chartThemeFor, type ChartTheme } from '@/lib/chartTheme';
 import { fmtPct, fmtSignedPp } from '@/lib/formatShot';
 
 /** Symmetric domain for FG% delta (player − league), in percentage points as decimal. */
@@ -64,32 +66,28 @@ interface HexTooltipHover {
   vy: number;
 }
 
-/** Vibrant red (below league) -> neutral slate -> vibrant green (above league). */
-const MAKES_GREEN_START = '#166534';
-const MAKES_GREEN_END = '#00ff66';
-
-function colorForDelta(delta: number): string {
+function colorForDelta(delta: number, theme: ChartTheme): string {
   const t = Math.max(
     0,
     Math.min(1, (delta + FG_DELTA_DOMAIN) / (2 * FG_DELTA_DOMAIN)),
   );
+  // Lab interpolation keeps the red→neutral→green ramp clean; RGB turns muddy.
   if (t <= 0.5) {
-    return d3.interpolateRgb('#ff1f4b', '#334155')(t / 0.5);
+    return d3.interpolateLab(theme.deltaBelow, theme.deltaMid)(t / 0.5);
   }
-  return d3.interpolateRgb('#334155', MAKES_GREEN_END)((t - 0.5) / 0.5);
+  return d3.interpolateLab(theme.deltaMid, theme.deltaAbove)((t - 0.5) / 0.5);
 }
 
-function zoneFillColor(agg: ZoneAggregate | undefined): string {
+function zoneFillColor(agg: ZoneAggregate | undefined, theme: ChartTheme): string {
   if (!agg || agg.fga === 0) {
-    return 'rgba(255,255,255,0.06)';
+    return theme.emptyFill;
   }
   if (agg.leagueFgPct === null || agg.fgPctDelta === null) {
-    return 'rgba(148,163,184,0.22)';
+    return theme.noLeagueFill;
   }
-  return colorForDelta(agg.fgPctDelta);
+  return colorForDelta(agg.fgPctDelta, theme);
 }
 
-const HOVER_STROKE = '#22d3ee';
 const HEX_RADIUS = 8;
 const SQRT_3 = Math.sqrt(3);
 
@@ -105,6 +103,8 @@ export default function ShotChart({
   onZoneSelect,
 }: Props) {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  const { resolvedTheme } = useTheme();
+  const chartTheme = chartThemeFor(resolvedTheme);
   const [zoneTooltip, setZoneTooltip] = useState<ZoneTooltipHover | null>(null);
   const [hexTooltip, setHexTooltip] = useState<HexTooltipHover | null>(null);
 
@@ -137,8 +137,8 @@ export default function ShotChart({
     <div className="relative w-full">
       <svg
         viewBox={COURT_VIEWBOX}
-        className="block h-auto w-full"
-        style={{ background: '#0e1422', borderRadius: 12 }}
+        className="block h-auto w-full rounded-xl ring-1 ring-line/50"
+        style={{ background: chartTheme.courtBg }}
         onMouseLeave={() => {
           setZoneTooltip(null);
           setHexTooltip(null);
@@ -154,9 +154,9 @@ export default function ShotChart({
                 <path
                   key={z.id}
                   d={z.d}
-                  fill={zoneFillColor(agg)}
+                  fill={zoneFillColor(agg, chartTheme)}
                   fillRule={z.fillRule ?? 'nonzero'}
-                  stroke={isHovered ? HOVER_STROKE : 'none'}
+                  stroke={isHovered ? chartTheme.hoverStroke : 'none'}
                   strokeWidth={isHovered ? 2.5 : 0}
                   shapeRendering="geometricPrecision"
                   onMouseEnter={(e) => {
@@ -191,8 +191,8 @@ export default function ShotChart({
                 <path
                   key={`${bin.q},${bin.r}`}
                   d={hexPath(bin.x, bin.y, HEX_RADIUS)}
-                  fill={hexFillColor(value, maxBinValue, shotResultFilter)}
-                  stroke="rgba(15,23,42,0.55)"
+                  fill={hexFillColor(value, maxBinValue, shotResultFilter, chartTheme)}
+                  stroke={chartTheme.hexStroke}
                   strokeWidth={0.7}
                   shapeRendering="geometricPrecision"
                   onMouseEnter={(e) => {
@@ -222,7 +222,7 @@ export default function ShotChart({
         <g
           className="court-lines"
           fill="none"
-          stroke="#cbd5e1"
+          stroke={chartTheme.courtLine}
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -260,18 +260,18 @@ export default function ShotChart({
                   >
                     <div className="flex h-full w-full items-center justify-center font-sans">
                       <div
-                        className="rounded-md px-2 py-[3px] shadow-[0_1px_2px_rgba(0,0,0,0.75)] backdrop-blur-[1px]"
+                        className="w-fit max-w-full rounded-md px-2 py-[3px] backdrop-blur-[2px]"
                         style={{
-                          background: 'rgba(0,0,0,0.48)',
-                          width: 'fit-content',
-                          maxWidth: '100%',
+                          background: chartTheme.labelBg,
+                          border: `1px solid ${chartTheme.labelBorder}`,
+                          boxShadow: chartTheme.labelShadow,
                         }}
                       >
                         <div className="whitespace-nowrap text-center tabular-nums">
-                          <div className="text-[11px] font-bold leading-tight tracking-tight text-slate-50">
+                          <div className="text-[11px] font-bold leading-tight tracking-tight text-ink">
                             {fga > 0 ? `${agg!.fgm}/${agg!.fga}` : '—'}
                           </div>
-                          <div className="mt-px text-[10px] font-semibold leading-tight tracking-tight text-slate-200">
+                          <div className="mt-px text-[10px] font-semibold leading-tight tracking-tight text-ink-muted">
                             {fmtPct(fgPct)}
                           </div>
                         </div>
@@ -288,26 +288,26 @@ export default function ShotChart({
       {zoneTooltip &&
         createPortal(
           <div
-            className="pointer-events-none fixed z-[9999] rounded-md border border-white/10 bg-slate-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
+            className="pointer-events-none fixed z-[9999] rounded-xl border border-line bg-card px-3 py-2 text-xs shadow-xl"
             style={{ left: zoneTooltip.vx + 14, top: zoneTooltip.vy + 14 }}
           >
-            <div className="font-semibold text-white">{zoneTooltip.zone.label}</div>
+            <div className="font-semibold text-ink">{zoneTooltip.zone.label}</div>
             {zoneTooltip.agg && zoneTooltip.agg.fga > 0 ? (
-              <div className="mt-1 space-y-0.5 text-slate-200">
+              <div className="mt-1 space-y-0.5 text-ink">
                 <div>
                   {zoneTooltip.agg.fgm} / {zoneTooltip.agg.fga} ·{' '}
                   <span className="font-semibold">
                     {fmtPct(zoneTooltip.agg.fgPct)}
                   </span>
                 </div>
-                <div className="text-slate-400">
+                <div className="text-ink-muted">
                   League: {fmtPct(zoneTooltip.agg.leagueFgPct)}
                   {zoneTooltip.agg.fgPctDelta !== null && (
                     <span
                       className={
                         zoneTooltip.agg.fgPctDelta >= 0
-                          ? 'ml-2 text-emerald-400'
-                          : 'ml-2 text-rose-400'
+                          ? 'ml-2 text-emerald-600 dark:text-emerald-400'
+                          : 'ml-2 text-rose-600 dark:text-rose-400'
                       }
                     >
                       {fmtSignedPp(zoneTooltip.agg.fgPctDelta)}
@@ -316,7 +316,7 @@ export default function ShotChart({
                 </div>
               </div>
             ) : (
-              <div className="mt-1 text-slate-400">No attempts</div>
+              <div className="mt-1 text-ink-muted">No attempts</div>
             )}
           </div>,
           document.body,
@@ -325,27 +325,27 @@ export default function ShotChart({
       {hexTooltip &&
         createPortal(
           <div
-            className="pointer-events-none fixed z-[9999] rounded-md border border-white/10 bg-slate-900/95 px-3 py-2 text-xs shadow-xl backdrop-blur-sm"
+            className="pointer-events-none fixed z-[9999] rounded-xl border border-line bg-card px-3 py-2 text-xs shadow-xl"
             style={{ left: hexTooltip.vx + 14, top: hexTooltip.vy + 14 }}
           >
-            <div className="font-semibold text-white">
+            <div className="font-semibold text-ink">
               {hexTooltip.filter === 'makes' ? 'Made shots' : 'Missed shots'}
             </div>
-            <div className="mt-1 text-slate-200">
+            <div className="mt-1 text-ink">
               {hexTooltip.filter === 'makes'
                 ? `${hexTooltip.bin.makes} makes`
                 : `${hexTooltip.bin.misses} misses`}
             </div>
-            <div className="text-slate-400">{hexTooltip.bin.total} total attempts</div>
+            <div className="text-ink-faint">{hexTooltip.bin.total} total attempts</div>
           </div>,
           document.body,
         )}
 
       {mode === 'heatmap' ? (
-        <Legend uid={uid} />
+        <Legend uid={uid} chartTheme={chartTheme} />
       ) : (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <HexLegend uid={uid} filter={shotResultFilter} />
+          <HexLegend uid={uid} filter={shotResultFilter} chartTheme={chartTheme} />
           <ShotResultToggle
             value={shotResultFilter}
             onChange={onShotResultFilterChange}
@@ -356,16 +356,16 @@ export default function ShotChart({
   );
 }
 
-function Legend({ uid }: { uid: string }) {
+function Legend({ uid, chartTheme }: { uid: string; chartTheme: ChartTheme }) {
   const gradId = `${uid}-legend-grad`;
   const stops = d3.range(0, 1.001, 0.04).map((t) => ({
     t,
-    color: colorForDelta(-FG_DELTA_DOMAIN + t * 2 * FG_DELTA_DOMAIN),
+    color: colorForDelta(-FG_DELTA_DOMAIN + t * 2 * FG_DELTA_DOMAIN, chartTheme),
   }));
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
       <span className="shrink-0">vs league</span>
-      <span className="shrink-0 text-rose-300/90">Below</span>
+      <span className="shrink-0 text-rose-600/90 dark:text-rose-400/90">Below</span>
       <svg viewBox="0 0 200 14" className="h-3 w-48 shrink-0">
         <defs>
           <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
@@ -386,10 +386,12 @@ function Legend({ uid }: { uid: string }) {
           fill={`url(#${gradId})`}
           rx={3}
           ry={3}
+          stroke={chartTheme.labelBorder}
+          strokeWidth={0.5}
         />
       </svg>
-      <span className="shrink-0 text-emerald-300/90">Above</span>
-      <span className="ml-1 shrink-0 text-slate-500">
+      <span className="shrink-0 text-emerald-600/90 dark:text-emerald-400/90">Above</span>
+      <span className="ml-1 shrink-0 text-ink-faint">
         (±{(FG_DELTA_DOMAIN * 100).toFixed(0)}pp)
       </span>
     </div>
@@ -399,19 +401,21 @@ function Legend({ uid }: { uid: string }) {
 function HexLegend({
   uid,
   filter,
+  chartTheme,
 }: {
   uid: string;
   filter: ShotResultFilter;
+  chartTheme: ChartTheme;
 }) {
   const gradId = `${uid}-hex-legend-grad`;
-  const start = filter === 'makes' ? MAKES_GREEN_START : '#334155';
-  const end = filter === 'makes' ? MAKES_GREEN_END : '#ff1f4b';
+  const start = filter === 'makes' ? chartTheme.makesStart : chartTheme.missesStart;
+  const end = filter === 'makes' ? chartTheme.makesEnd : chartTheme.missesEnd;
   return (
-    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+    <div className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
       <span className="shrink-0">
         {filter === 'makes' ? 'made shots per hex' : 'missed shots per hex'}
       </span>
-      <span className="shrink-0 text-slate-500">Low</span>
+      <span className="shrink-0 text-ink-faint">Low</span>
       <svg viewBox="0 0 200 14" className="h-3 w-48 shrink-0">
         <defs>
           <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
@@ -427,11 +431,15 @@ function HexLegend({
           fill={`url(#${gradId})`}
           rx={3}
           ry={3}
+          stroke={chartTheme.labelBorder}
+          strokeWidth={0.5}
         />
       </svg>
       <span
         className={`shrink-0 ${
-          filter === 'makes' ? 'text-emerald-300/90' : 'text-rose-300/90'
+          filter === 'makes'
+            ? 'text-emerald-600/90 dark:text-emerald-400/90'
+            : 'text-rose-600/90 dark:text-rose-400/90'
         }`}
       >
         High
@@ -448,7 +456,7 @@ function ShotResultToggle({
   onChange?: (filter: ShotResultFilter) => void;
 }) {
   return (
-    <div className="inline-flex rounded-lg border border-white/10 bg-slate-900/60 p-1 text-xs sm:text-sm">
+    <div className="inline-flex rounded-full border border-line bg-panel p-1 text-xs sm:text-sm">
       <ToggleButton
         active={value === 'makes'}
         label="Makes"
@@ -476,8 +484,10 @@ function ToggleButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-md px-3 py-1.5 transition ${
-        active ? 'bg-white font-medium text-slate-900' : 'text-slate-300 hover:text-white'
+      className={`rounded-full px-3 py-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 ${
+        active
+          ? 'bg-ink font-medium text-paper shadow-sm'
+          : 'text-ink-muted hover:text-ink'
       }`}
     >
       {label}
@@ -489,14 +499,15 @@ function hexFillColor(
   value: number,
   maxValue: number,
   filter: ShotResultFilter,
+  theme: ChartTheme,
 ): string {
   if (value <= 0 || maxValue <= 0) {
-    return 'rgba(255,255,255,0.05)';
+    return theme.emptyFill;
   }
   const t = Math.min(1, value / maxValue);
   return filter === 'makes'
-    ? d3.interpolateRgb(MAKES_GREEN_START, MAKES_GREEN_END)(t)
-    : d3.interpolateRgb('#334155', '#ff1f4b')(t);
+    ? d3.interpolateLab(theme.makesStart, theme.makesEnd)(t)
+    : d3.interpolateLab(theme.missesStart, theme.missesEnd)(t);
 }
 
 function hexPath(cx: number, cy: number, radius: number): string {

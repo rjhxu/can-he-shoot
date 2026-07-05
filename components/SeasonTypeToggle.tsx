@@ -10,11 +10,21 @@ const OPTIONS: { value: SeasonType; label: string }[] = [
 interface Props {
   value: SeasonType;
   onChange: (v: SeasonType) => void;
+  className?: string;
+  ariaLabel?: string;
 }
 
-export default function SeasonTypeToggle({ value, onChange }: Props) {
+export default function SeasonTypeToggle({
+  value,
+  onChange,
+  className = '',
+  ariaLabel = 'Season type',
+}: Props) {
   return (
-    <div className="inline-flex rounded-lg border border-white/10 bg-slate-900/60 p-1 text-xs sm:text-sm">
+    <div
+      className={`inline-flex rounded-full border border-line bg-panel p-1 text-xs sm:text-sm ${className}`}
+      aria-label={ariaLabel}
+    >
       {OPTIONS.map((o) => {
         const active = o.value === value;
         return (
@@ -22,10 +32,10 @@ export default function SeasonTypeToggle({ value, onChange }: Props) {
             key={o.value}
             type="button"
             onClick={() => onChange(o.value)}
-            className={`rounded-md px-3 py-1.5 transition ${
+            className={`rounded-full px-3 py-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 ${
               active
-                ? 'bg-white text-slate-900 font-medium'
-                : 'text-slate-300 hover:text-white'
+                ? 'bg-ink font-medium text-paper shadow-sm'
+                : 'text-ink-muted hover:text-ink'
             }`}
           >
             {o.label}
