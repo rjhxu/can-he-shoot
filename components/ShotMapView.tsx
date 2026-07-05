@@ -29,7 +29,6 @@ import {
 } from '@/lib/zoneComparison';
 import {
   EMPTY_STATS_BY_SEASON_TYPE,
-  hasPlayoffStats,
   type StatsBySeasonType,
 } from '@/lib/statsSeasonTypeTabs';
 import type {
@@ -253,7 +252,6 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
             shots={data?.shots ?? []}
             totals={totals}
             statsByType={statsByType}
-            onSeasonTypeChange={setSeasonType}
             statsLoading={statsLoading && !!selected}
             statsErrors={statsErrors}
             hoveredZone={hoveredZone}
@@ -273,7 +271,6 @@ function SidePanel({
   shots,
   totals,
   statsByType,
-  onSeasonTypeChange,
   statsLoading,
   statsErrors,
   hoveredZone,
@@ -286,7 +283,6 @@ function SidePanel({
   shots: Shot[];
   totals: ShootingTotals | null;
   statsByType: StatsBySeasonType;
-  onSeasonTypeChange: (seasonType: SeasonType) => void;
   statsLoading: boolean;
   statsErrors: Partial<Record<SeasonType, string>>;
   hoveredZone: ZoneHoverPayload | null;
@@ -370,7 +366,6 @@ function SidePanel({
 
       <SeasonStatsPanel
         seasonType={seasonType}
-        onSeasonTypeChange={onSeasonTypeChange}
         statsByType={statsByType}
         loading={statsLoading}
         errors={statsErrors}
@@ -553,20 +548,17 @@ function MobileStat({ label, value }: { label: string; value: string }) {
 
 function SeasonStatsPanel({
   seasonType,
-  onSeasonTypeChange,
   statsByType,
   loading,
   errors,
   isMobile,
 }: {
   seasonType: SeasonType;
-  onSeasonTypeChange: (seasonType: SeasonType) => void;
   statsByType: StatsBySeasonType;
   loading: boolean;
   errors: Partial<Record<SeasonType, string>>;
   isMobile: boolean;
 }) {
-  const showPlayoffsTab = hasPlayoffStats(statsByType);
   const stats = statsByType[seasonType];
   const error = errors[seasonType] ?? null;
   const hasAnyStats =
@@ -575,11 +567,8 @@ function SeasonStatsPanel({
   if (loading) {
     return (
       <div className="rounded-xl border border-line bg-panel p-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
-            Season stats
-          </div>
-          <div className="h-6 w-16 animate-pulse rounded-md bg-line court-skeleton-legend" />
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+          Season stats
         </div>
         <div className="mt-2 grid grid-cols-3 gap-2">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -604,17 +593,8 @@ function SeasonStatsPanel({
   if (error && !stats) {
     return (
       <div className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
-            Season stats
-          </div>
-          <SeasonTypeToggle
-            value={seasonType}
-            onChange={onSeasonTypeChange}
-            compact
-            visible={showPlayoffsTab}
-            ariaLabel="Season stats type"
-          />
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+          Season stats · {seasonType}
         </div>
         <div className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-xs text-rose-800 dark:border-rose-500/25 dark:bg-rose-500/5 dark:text-rose-200/90">
           <div className="font-medium text-rose-800 dark:text-rose-200">
@@ -629,17 +609,8 @@ function SeasonStatsPanel({
   if (!stats) {
     return (
       <div className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
-            Season stats
-          </div>
-          <SeasonTypeToggle
-            value={seasonType}
-            onChange={onSeasonTypeChange}
-            compact
-            visible={showPlayoffsTab}
-            ariaLabel="Season stats type"
-          />
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+          Season stats · {seasonType}
         </div>
         <div className="rounded-xl border border-line bg-panel p-3 text-xs text-ink-muted">
           No {seasonType.toLowerCase()} stats on file for this player yet.
@@ -677,22 +648,13 @@ function SeasonStatsPanel({
 
   return (
     <div className="rounded-xl border border-line bg-panel p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
-            Season stats
-          </div>
-          <div className="text-[10px] text-ink-faint">
-            {seasonType} · per game
-          </div>
+      <div className="min-w-0">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+          Season stats
         </div>
-        <SeasonTypeToggle
-          value={seasonType}
-          onChange={onSeasonTypeChange}
-          compact
-          visible={showPlayoffsTab}
-          ariaLabel="Season stats type"
-        />
+        <div className="text-[10px] text-ink-faint">
+          {seasonType} · per game
+        </div>
       </div>
 
       <div
