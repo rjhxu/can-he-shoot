@@ -10,6 +10,12 @@ const FALLBACK: TeamGlowColors = {
   secondary: '#334155',
 };
 
+export const NBA_TEAM_ABBREVS = [
+  'ATL', 'BOS', 'BKN', 'CHA', 'CHI', 'CLE', 'DAL', 'DEN', 'DET', 'GSW',
+  'HOU', 'IND', 'LAC', 'LAL', 'MEM', 'MIA', 'MIL', 'MIN', 'NOP', 'NYK',
+  'OKC', 'ORL', 'PHI', 'PHX', 'POR', 'SAC', 'SAS', 'TOR', 'UTA', 'WAS',
+] as const;
+
 const MAP: Record<string, TeamGlowColors> = {
   ATL: { primary: '#e03a3e', secondary: '#c1d32f' },
   BOS: { primary: '#007a33', secondary: '#ba9653' },
@@ -47,4 +53,21 @@ export function teamGlowColors(abbrev: string): TeamGlowColors {
   const key = abbrev?.trim().toUpperCase();
   if (!key) return FALLBACK;
   return MAP[key] ?? FALLBACK;
+}
+
+/** Relative luminance (sRGB) for contrast against a light background (~#f8f7f5). */
+function relativeLuminance(hex: string): number {
+  const raw = hex.replace('#', '');
+  const r = parseInt(raw.slice(0, 2), 16) / 255;
+  const g = parseInt(raw.slice(2, 4), 16) / 255;
+  const b = parseInt(raw.slice(4, 6), 16) / 255;
+  const linear = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+}
+
+/** Readable team color for inline text on light/dark card backgrounds. */
+export function teamTextColor(abbrev: string): string {
+  const { primary, secondary } = teamGlowColors(abbrev);
+  if (relativeLuminance(primary) < 0.25) return secondary;
+  return primary;
 }

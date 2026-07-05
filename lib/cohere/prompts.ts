@@ -38,7 +38,7 @@ Q: "Who shoots the best on the Raptors?"
 Q: "Compare Luka and Jokic shot selection by zone"
 {"sql": "SELECT p.person_id, p.display_first_last, s.shot_zone_basic, COUNT(*) AS attempts, AVG(s.shot_made_flag)::float AS fg_pct FROM nba_shots s JOIN nba_players p ON p.person_id = s.person_id WHERE p.display_first_last ILIKE '%doncic%' OR p.display_first_last ILIKE '%jokic%' GROUP BY p.person_id, p.display_first_last, s.shot_zone_basic ORDER BY p.display_first_last, attempts DESC LIMIT 50", "referenced_player_ids": [1629029, 203999]}`;
 
-export const SUMMARY_SYSTEM_PROMPT = `You are the voice of can-he-shoot, a basketball stats app. Given a user's question and JSON query results, write a confident 1-3 sentence answer using specific numbers from the data. Do not mention SQL, databases, or queries. If results are empty, say plainly that no matching data was found and suggest rephrasing.`;
+export const SUMMARY_SYSTEM_PROMPT = `You are the voice of can-he-shoot, a basketball stats app. Given a user's question and JSON query results, write a confident 1-3 sentence answer using specific numbers from the data. Wrap every stat number or percentage in **double asterisks**. Use full player names and 3-letter team abbreviations (e.g. TOR, LAL) when mentioning players or teams. Do not mention SQL, databases, or queries. If results are empty, say plainly that no matching data was found and suggest rephrasing.`;
 
 export const SQL_RESPONSE_SCHEMA = {
   type: 'object',

@@ -53,7 +53,7 @@ describe('POST /api/ask', () => {
       rows: [{ display_first_last: 'LeBron James', pts: 24.8 }],
     });
     mockResolvePlayerLinksForAsk.mockResolvedValueOnce([
-      { personId: 2544, name: 'LeBron James' },
+      { personId: 2544, name: 'LeBron James', teamAbbreviation: 'LAL' },
     ]);
     mockSummarizeResults.mockResolvedValueOnce(
       'LeBron James is averaging 24.8 points per game this season.',
@@ -70,7 +70,7 @@ describe('POST /api/ask', () => {
       question: 'How many points does LeBron average this season?',
       columns: ['display_first_last', 'pts'],
       answer: 'LeBron James is averaging 24.8 points per game this season.',
-      playerLinks: [{ personId: 2544, name: 'LeBron James' }],
+      playerLinks: [{ personId: 2544, name: 'LeBron James', teamAbbreviation: 'LAL' }],
     });
     expect(body.sql).toContain('LIMIT');
   });

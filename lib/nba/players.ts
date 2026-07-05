@@ -36,12 +36,18 @@ export async function getActivePlayers(): Promise<Player[]> {
   return getCachedActivePlayers();
 }
 
+export interface AskPlayerLink {
+  personId: number;
+  name: string;
+  teamAbbreviation: string;
+}
+
 /** Resolve shot-chart links from Cohere IDs, then query result columns as fallback. */
 export async function resolvePlayerLinksForAsk(
   referencedIds: number[],
   columns: string[],
   rows: Record<string, unknown>[],
-): Promise<{ personId: number; name: string }[]> {
+): Promise<AskPlayerLink[]> {
   const ids = [...new Set([...referencedIds, ...extractPersonIdsFromResults(columns, rows)])];
 
   let links = await resolvePlayersByIds(ids);
@@ -50,22 +56,27 @@ export async function resolvePlayerLinksForAsk(
   }
 
   const seen = new Set<number>();
-  return links.filter((link) => {
-    if (seen.has(link.personId)) return false;
-    seen.add(link.personId);
-    return true;
-  });
+  return links
+    .filter((link) => {
+      if (seen.has(link.personId)) return false;
+      seen.add(link.personId);
+      return true;
+    })
+    .map((link) => ({
+      ...link,
+      teamAbbreviation:
+        teamFromRowsForPlayer(link.personId, link.name, columns, rows) ??
+        link.teamAbbreviation,
+    }));
 }
 
-export async function resolvePlayersByIds(
-  personIds: number[],
-): Promise<{ personId: number; name: string }[]> {
+export async function resolvePlayersByIds(personIds: number[]): Promise<AskPlayerLink[]> {
   if (personIds.length === 0) return [];
 
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from('nba_players')
-    .select('person_id, display_first_last')
+    .select('person_id, display_first_last, team_abbreviation')
     .in('person_id', personIds);
 
   if (error) {
@@ -75,6 +86,7 @@ export async function resolvePlayersByIds(
   return (data ?? []).map((row) => ({
     personId: Number(row.person_id),
     name: String(row.display_first_last ?? ''),
+    teamAbbreviation: String(row.team_abbreviation ?? ''),
   }));
 }
 
@@ -109,15 +121,13 @@ export function extractPlayerNamesFromResults(
   return [...names];
 }
 
-export async function resolvePlayersByNames(
-  names: string[],
-): Promise<{ personId: number; name: string }[]> {
+export async function resolvePlayersByNames(names: string[]): Promise<AskPlayerLink[]> {
   if (names.length === 0) return [];
 
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from('nba_players')
-    .select('person_id, display_first_last')
+    .select('person_id, display_first_last, team_abbreviation')
     .in('display_first_last', names);
 
   if (error) {
@@ -127,5 +137,31 @@ export async function resolvePlayersByNames(
   return (data ?? []).map((row) => ({
     personId: Number(row.person_id),
     name: String(row.display_first_last ?? ''),
+    teamAbbreviation: String(row.team_abbreviation ?? ''),
   }));
+}
+
+function teamFromRowsForPlayer(
+  personId: number,
+  name: string,
+  columns: string[],
+  rows: Record<string, unknown>[],
+): string | undefined {
+  if (!columns.includes('team_abbreviation')) return undefined;
+
+  const nameColumn = PLAYER_NAME_COLUMNS.find((col) => columns.includes(col));
+  const hasPersonId = columns.includes('person_id');
+
+  for (const row of rows) {
+    const matchesPlayer =
+      (hasPersonId && Number(row.person_id) === personId) ||
+      (nameColumn != null && row[nameColumn] === name);
+
+    if (!matchesPlayer) continue;
+
+    const team = row.team_abbreviation;
+    if (typeof team === 'string' && team.trim()) return team.trim();
+  }
+
+  return undefined;
 }

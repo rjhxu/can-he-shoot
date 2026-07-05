@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { renderEnrichedAnswer } from '@/lib/renderAskAnswer';
+import { teamTextColor } from '@/lib/teamColors';
 
 export interface AskResponse {
   question: string;
@@ -9,23 +11,10 @@ export interface AskResponse {
   columns: string[];
   rows: Record<string, unknown>[];
   answer: string;
-  playerLinks: { personId: number; name: string }[];
+  playerLinks: { personId: number; name: string; teamAbbreviation: string }[];
 }
 
 const MAX_DISPLAY_ROWS = 50;
-
-/** Answers from the model sometimes include markdown bold — render it as <strong>. */
-function renderAnswer(answer: string): React.ReactNode[] {
-  return answer.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith('**') && part.endsWith('**') ? (
-      <strong key={i} className="font-bold text-accent">
-        {part.slice(2, -2)}
-      </strong>
-    ) : (
-      <span key={i}>{part}</span>
-    ),
-  );
-}
 
 function formatCell(value: unknown): string {
   if (value === null || value === undefined) return '—';
@@ -35,7 +24,15 @@ function formatCell(value: unknown): string {
   return String(value);
 }
 
-function PlayerLinkCard({ personId, name }: { personId: number; name: string }) {
+function PlayerLinkCard({
+  personId,
+  name,
+  teamAbbreviation,
+}: {
+  personId: number;
+  name: string;
+  teamAbbreviation: string;
+}) {
   const [errored, setErrored] = useState(false);
   const initials = name
     .split(/\s+/)
@@ -69,7 +66,12 @@ function PlayerLinkCard({ personId, name }: { personId: number; name: string }) 
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate font-semibold text-ink">{name}</div>
+        <div
+          className="truncate font-semibold"
+          style={{ color: teamTextColor(teamAbbreviation) }}
+        >
+          {name}
+        </div>
         <div className="mt-0.5 text-sm font-medium text-accent transition group-hover:text-accent-hover">
           View shot chart →
         </div>
@@ -119,7 +121,11 @@ export default function AskResults({ result, loading, error }: Props) {
           {result.question}
         </div>
         <p className="mt-2 text-xl font-semibold leading-snug text-ink sm:text-2xl">
-          {renderAnswer(result.answer)}
+          {renderEnrichedAnswer(result.answer, {
+            playerLinks: result.playerLinks,
+            rows: result.rows,
+            columns: result.columns,
+          })}
         </p>
         <button
           type="button"
@@ -184,6 +190,7 @@ export default function AskResults({ result, loading, error }: Props) {
                 key={player.personId}
                 personId={player.personId}
                 name={player.name}
+                teamAbbreviation={player.teamAbbreviation}
               />
             ))}
           </div>
