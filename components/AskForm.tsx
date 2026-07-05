@@ -33,7 +33,7 @@ export default function AskForm({ onSubmit, loading, initialValue = '' }: Props)
         <button
           type="submit"
           disabled={loading || question.trim().length < 3}
-          className="shrink-0 rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+          className="shrink-0 rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:bg-line disabled:text-ink-faint disabled:opacity-100"
         >
           {loading ? 'Thinking…' : 'Ask'}
         </button>

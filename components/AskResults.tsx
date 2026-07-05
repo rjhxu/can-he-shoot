@@ -92,10 +92,10 @@ export default function AskResults({ result, loading, error }: Props) {
   if (loading) {
     return (
       <div className="w-full space-y-4">
-        <div className="h-9 w-3/4 animate-pulse rounded-lg bg-panel" />
-        <div className="h-4 w-full animate-pulse rounded bg-panel court-skeleton-legend" />
-        <div className="h-4 w-5/6 animate-pulse rounded bg-panel court-skeleton-legend" />
-        <div className="mt-6 h-48 animate-pulse rounded-2xl bg-panel" />
+        <div className="h-9 w-3/4 animate-pulse rounded-lg bg-line" />
+        <div className="h-4 w-full animate-pulse rounded bg-line court-skeleton-legend" />
+        <div className="h-4 w-5/6 animate-pulse rounded bg-line court-skeleton-legend" />
+        <div className="mt-6 h-48 animate-pulse rounded-2xl border border-line bg-panel" />
       </div>
     );
   }

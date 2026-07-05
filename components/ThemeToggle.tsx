@@ -16,7 +16,7 @@ export default function ThemeToggle() {
       type="button"
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
       disabled={!mounted}
-      className="rounded-full border border-line bg-panel p-2 text-ink-muted transition hover:text-ink disabled:opacity-40"
+      className="rounded-full border border-line bg-panel p-2 text-ink-muted transition hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:opacity-40"
       aria-label={mounted ? (isDark ? 'Switch to light mode' : 'Switch to dark mode') : 'Toggle theme'}
       title={mounted ? (isDark ? 'Light mode' : 'Dark mode') : 'Toggle theme'}
     >

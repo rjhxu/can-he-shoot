@@ -54,7 +54,7 @@ export default function SeasonTypeToggle({
             role={compact ? 'tab' : undefined}
             aria-selected={compact ? active : undefined}
             onClick={() => onChange(o.value)}
-            className={`${buttonPad} transition ${
+            className={`${buttonPad} transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 ${
               active
                 ? 'bg-ink font-medium text-paper shadow-sm'
                 : 'text-ink-muted hover:text-ink'

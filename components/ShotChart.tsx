@@ -14,6 +14,7 @@ import {
 } from '@/lib/nba/court';
 import type { LeagueZoneAverage, Shot, ZoneAggregate } from '@/lib/nba/types';
 import { aggregateByZone } from '@/lib/aggregate';
+import { chartThemeFor, type ChartTheme } from '@/lib/chartTheme';
 import { fmtPct, fmtSignedPp } from '@/lib/formatShot';
 
 /** Symmetric domain for FG% delta (player − league), in percentage points as decimal. */
@@ -65,68 +66,16 @@ interface HexTooltipHover {
   vy: number;
 }
 
-/**
- * Theme-aware chart palette. Light mode uses deeper, print-like colors on a
- * warm paper court; dark mode keeps the vivid scale that reads well on navy.
- */
-interface ChartTheme {
-  courtBg: string;
-  courtLine: string;
-  hoverStroke: string;
-  deltaBelow: string;
-  deltaMid: string;
-  deltaAbove: string;
-  makesStart: string;
-  makesEnd: string;
-  missesStart: string;
-  missesEnd: string;
-  emptyFill: string;
-  noLeagueFill: string;
-  hexStroke: string;
-}
-
-const CHART_THEMES: Record<'light' | 'dark', ChartTheme> = {
-  light: {
-    courtBg: '#efece7',
-    courtLine: '#a8a49b',
-    hoverStroke: '#191a1e',
-    deltaBelow: '#d92d47',
-    deltaMid: '#cbc6bc',
-    deltaAbove: '#0f9d58',
-    makesStart: '#9ed3b2',
-    makesEnd: '#085c30',
-    missesStart: '#f0b4a8',
-    missesEnd: '#c01f39',
-    emptyFill: 'rgba(25,26,30,0.03)',
-    noLeagueFill: 'rgba(25,26,30,0.10)',
-    hexStroke: 'rgba(25,26,30,0.18)',
-  },
-  dark: {
-    courtBg: '#0e1219',
-    courtLine: '#5b6474',
-    hoverStroke: '#ffffff',
-    deltaBelow: '#ff1f4b',
-    deltaMid: '#334155',
-    deltaAbove: '#00ff66',
-    makesStart: '#166534',
-    makesEnd: '#00ff66',
-    missesStart: '#334155',
-    missesEnd: '#ff1f4b',
-    emptyFill: 'rgba(255,255,255,0.05)',
-    noLeagueFill: 'rgba(148,163,184,0.22)',
-    hexStroke: 'rgba(15,23,42,0.55)',
-  },
-};
-
 function colorForDelta(delta: number, theme: ChartTheme): string {
   const t = Math.max(
     0,
     Math.min(1, (delta + FG_DELTA_DOMAIN) / (2 * FG_DELTA_DOMAIN)),
   );
+  // Lab interpolation keeps the red→neutral→green ramp clean; RGB turns muddy.
   if (t <= 0.5) {
-    return d3.interpolateRgb(theme.deltaBelow, theme.deltaMid)(t / 0.5);
+    return d3.interpolateLab(theme.deltaBelow, theme.deltaMid)(t / 0.5);
   }
-  return d3.interpolateRgb(theme.deltaMid, theme.deltaAbove)((t - 0.5) / 0.5);
+  return d3.interpolateLab(theme.deltaMid, theme.deltaAbove)((t - 0.5) / 0.5);
 }
 
 function zoneFillColor(agg: ZoneAggregate | undefined, theme: ChartTheme): string {
@@ -155,7 +104,7 @@ export default function ShotChart({
 }: Props) {
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const { resolvedTheme } = useTheme();
-  const chartTheme = CHART_THEMES[resolvedTheme === 'light' ? 'light' : 'dark'];
+  const chartTheme = chartThemeFor(resolvedTheme);
   const [zoneTooltip, setZoneTooltip] = useState<ZoneTooltipHover | null>(null);
   const [hexTooltip, setHexTooltip] = useState<HexTooltipHover | null>(null);
 
@@ -188,8 +137,8 @@ export default function ShotChart({
     <div className="relative w-full">
       <svg
         viewBox={COURT_VIEWBOX}
-        className="block h-auto w-full"
-        style={{ background: chartTheme.courtBg, borderRadius: 12 }}
+        className="block h-auto w-full rounded-xl ring-1 ring-line/50"
+        style={{ background: chartTheme.courtBg }}
         onMouseLeave={() => {
           setZoneTooltip(null);
           setHexTooltip(null);
@@ -311,35 +260,18 @@ export default function ShotChart({
                   >
                     <div className="flex h-full w-full items-center justify-center font-sans">
                       <div
-                        className="rounded-md px-2 py-[3px] backdrop-blur-[1px]"
+                        className="w-fit max-w-full rounded-md px-2 py-[3px] backdrop-blur-[2px]"
                         style={{
-                          background:
-                            resolvedTheme === 'light'
-                              ? 'rgba(255,255,255,0.82)'
-                              : 'rgba(0,0,0,0.48)',
-                          boxShadow:
-                            resolvedTheme === 'light'
-                              ? '0 1px 2px rgba(25,26,30,0.28)'
-                              : '0 1px 2px rgba(0,0,0,0.75)',
-                          width: 'fit-content',
-                          maxWidth: '100%',
+                          background: chartTheme.labelBg,
+                          border: `1px solid ${chartTheme.labelBorder}`,
+                          boxShadow: chartTheme.labelShadow,
                         }}
                       >
                         <div className="whitespace-nowrap text-center tabular-nums">
-                          <div
-                            className="text-[11px] font-bold leading-tight tracking-tight"
-                            style={{
-                              color: resolvedTheme === 'light' ? '#191a1e' : '#f8fafc',
-                            }}
-                          >
+                          <div className="text-[11px] font-bold leading-tight tracking-tight text-ink">
                             {fga > 0 ? `${agg!.fgm}/${agg!.fga}` : '—'}
                           </div>
-                          <div
-                            className="mt-px text-[10px] font-semibold leading-tight tracking-tight"
-                            style={{
-                              color: resolvedTheme === 'light' ? '#5f646e' : '#e2e8f0',
-                            }}
-                          >
+                          <div className="mt-px text-[10px] font-semibold leading-tight tracking-tight text-ink-muted">
                             {fmtPct(fgPct)}
                           </div>
                         </div>
@@ -433,7 +365,7 @@ function Legend({ uid, chartTheme }: { uid: string; chartTheme: ChartTheme }) {
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
       <span className="shrink-0">vs league</span>
-      <span className="shrink-0 text-rose-600/90 dark:text-rose-300/90">Below</span>
+      <span className="shrink-0 text-rose-600/90 dark:text-rose-400/90">Below</span>
       <svg viewBox="0 0 200 14" className="h-3 w-48 shrink-0">
         <defs>
           <linearGradient id={gradId} x1="0" x2="1" y1="0" y2="0">
@@ -454,9 +386,11 @@ function Legend({ uid, chartTheme }: { uid: string; chartTheme: ChartTheme }) {
           fill={`url(#${gradId})`}
           rx={3}
           ry={3}
+          stroke={chartTheme.labelBorder}
+          strokeWidth={0.5}
         />
       </svg>
-      <span className="shrink-0 text-emerald-600/90 dark:text-emerald-300/90">Above</span>
+      <span className="shrink-0 text-emerald-600/90 dark:text-emerald-400/90">Above</span>
       <span className="ml-1 shrink-0 text-ink-faint">
         (±{(FG_DELTA_DOMAIN * 100).toFixed(0)}pp)
       </span>
@@ -497,13 +431,15 @@ function HexLegend({
           fill={`url(#${gradId})`}
           rx={3}
           ry={3}
+          stroke={chartTheme.labelBorder}
+          strokeWidth={0.5}
         />
       </svg>
       <span
         className={`shrink-0 ${
           filter === 'makes'
-            ? 'text-emerald-600/90 dark:text-emerald-300/90'
-            : 'text-rose-600/90 dark:text-rose-300/90'
+            ? 'text-emerald-600/90 dark:text-emerald-400/90'
+            : 'text-rose-600/90 dark:text-rose-400/90'
         }`}
       >
         High
@@ -548,7 +484,7 @@ function ToggleButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full px-3 py-1.5 transition ${
+      className={`rounded-full px-3 py-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 ${
         active
           ? 'bg-ink font-medium text-paper shadow-sm'
           : 'text-ink-muted hover:text-ink'
@@ -570,8 +506,8 @@ function hexFillColor(
   }
   const t = Math.min(1, value / maxValue);
   return filter === 'makes'
-    ? d3.interpolateRgb(theme.makesStart, theme.makesEnd)(t)
-    : d3.interpolateRgb(theme.missesStart, theme.missesEnd)(t);
+    ? d3.interpolateLab(theme.makesStart, theme.makesEnd)(t)
+    : d3.interpolateLab(theme.missesStart, theme.missesEnd)(t);
 }
 
 function hexPath(cx: number, cy: number, radius: number): string {

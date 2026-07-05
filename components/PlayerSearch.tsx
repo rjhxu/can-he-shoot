@@ -70,7 +70,7 @@ export default function PlayerSearch({ players, selected, onSelect }: Props) {
                     setOpen(false);
                     setQuery('');
                   }}
-                  className="flex cursor-pointer items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm text-ink aria-selected:bg-panel"
+                  className="flex cursor-pointer items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm text-ink aria-selected:bg-panel data-[selected=true]:bg-panel hover:bg-panel/80"
                 >
                   <span className="truncate">{p.fullName}</span>
                   <span className="rounded bg-panel px-2 py-0.5 text-xs text-ink-muted">

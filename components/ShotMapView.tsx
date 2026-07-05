@@ -10,6 +10,7 @@ import ShotChart, {
   type ZoneHoverPayload,
 } from './ShotChart';
 import { computeTotals, type ShootingTotals } from '@/lib/aggregate';
+import { chartThemeFor } from '@/lib/chartTheme';
 import { fmtPct, fmtSignedPp } from '@/lib/formatShot';
 import {
   fmtMakesAttempts,
@@ -193,22 +194,22 @@ export default function ShotMapView({ players, defaultPlayer }: Props) {
 
   return (
     <div className="flex flex-col gap-4 sm:gap-6">
-      <header className="flex flex-row flex-wrap items-center justify-between gap-2 sm:gap-3">
-        <div className="flex-1">
+      <header className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
+        <div className="min-w-0 flex-1">
           <PlayerSearch
             players={players}
             selected={selected}
             onSelect={setSelected}
           />
         </div>
-        <div className="flex items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <MapModeToggle value={mapMode} onChange={setMapMode} />
           <SeasonTypeToggle value={seasonType} onChange={setSeasonType} />
         </div>
       </header>
 
       <section className="grid items-start gap-4 lg:gap-6 lg:grid-cols-[1fr_320px]">
-        <div className="rounded-2xl border border-line bg-card p-2 shadow-sm sm:p-3">
+        <div className="rounded-2xl border border-line bg-card p-3 shadow-sm sm:p-4">
           {!selected ? (
             <EmptyState />
           ) : loading ? (
@@ -426,7 +427,7 @@ function ToggleButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full px-3 py-1.5 transition ${
+      className={`rounded-full px-3 py-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 ${
         active
           ? 'bg-ink font-medium text-paper shadow-sm'
           : 'text-ink-muted hover:text-ink'
@@ -448,6 +449,8 @@ function PlayerHeadshot({
   isMobile: boolean;
   matchStatsHeight?: boolean;
 }) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
   const [errored, setErrored] = useState(false);
   const initials = player.fullName
     .split(/\s+/)
@@ -492,8 +495,10 @@ function PlayerHeadshot({
         className={`relative w-full rounded-xl ${matchStatsHeight ? 'h-full' : ''}`}
         style={{
           boxShadow: isMobile
-            ? '0 0 0 1px rgba(255,255,255,0.08)'
-            : `0 0 0 1px rgba(255,255,255,0.08), 0 18px 48px -12px ${glow.primary}aa, 0 8px 28px -8px ${glow.secondary}99`,
+            ? '0 0 0 1px rgb(var(--line-strong) / 0.6)'
+            : isDark
+              ? `0 0 0 1px rgb(var(--line-strong) / 0.6), 0 18px 48px -12px ${glow.primary}aa, 0 8px 28px -8px ${glow.secondary}99`
+              : `0 0 0 1px rgb(var(--line-strong) / 0.6), 0 10px 28px -12px ${glow.primary}55, 0 4px 14px -8px ${glow.secondary}40`,
         }}
       >
         {shell}
@@ -767,23 +772,21 @@ function ZoneDetailCard({
 
 function CourtSkeleton() {
   const { resolvedTheme } = useTheme();
-  const courtBg = resolvedTheme === 'light' ? '#efece7' : '#0e1219';
-  const zoneFill = resolvedTheme === 'light' ? 'rgb(211 208 200 / 0.55)' : 'rgb(51 59 77 / 0.55)';
-  const lineStroke = resolvedTheme === 'light' ? 'rgb(150 154 163 / 0.55)' : 'rgb(102 110 125 / 0.45)';
+  const chartTheme = chartThemeFor(resolvedTheme);
 
   return (
     <div className="relative w-full">
       <svg
         viewBox={COURT_VIEWBOX}
-        className="block h-auto w-full"
-        style={{ background: courtBg, borderRadius: 12 }}
+        className="block h-auto w-full rounded-xl ring-1 ring-line/50"
+        style={{ background: chartTheme.courtBg }}
       >
         <g className="court-skeleton-zones">
           {ZONES.map((z) => (
             <path
               key={z.id}
               d={z.d}
-              fill={zoneFill}
+              fill={chartTheme.skeletonZone}
               fillRule={z.fillRule ?? 'nonzero'}
               stroke="none"
               shapeRendering="geometricPrecision"
@@ -793,7 +796,7 @@ function CourtSkeleton() {
         <g
           className="pointer-events-none"
           fill="none"
-          stroke={lineStroke}
+          stroke={chartTheme.skeletonLine}
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
