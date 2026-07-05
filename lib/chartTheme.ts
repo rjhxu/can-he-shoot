@@ -31,7 +31,7 @@ export interface ChartTheme {
   labelShadow: string;
 }
 
-export const CHART_THEMES: Record<'light' | 'dark', ChartTheme> = {
+const CHART_THEMES: Record<'light' | 'dark', ChartTheme> = {
   light: {
     courtBg: '#f0ede8',
     courtLine: '#b5b0a6',

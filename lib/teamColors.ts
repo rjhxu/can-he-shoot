@@ -80,7 +80,7 @@ function mixHex(hex: string, target: string, t: number): string {
 }
 
 /** Team color that stays readable on a light (paper/card) background. */
-export function teamTextColorLight(abbrev: string): string {
+function teamTextColorLight(abbrev: string): string {
   const { primary, secondary } = teamGlowColors(abbrev);
   // Prefer the primary brand color when it's dark enough to read on paper.
   if (relativeLuminance(primary) <= 0.45) return primary;
@@ -89,7 +89,7 @@ export function teamTextColorLight(abbrev: string): string {
 }
 
 /** Team color that stays readable on a dark (navy) background. */
-export function teamTextColorDark(abbrev: string): string {
+function teamTextColorDark(abbrev: string): string {
   const { primary, secondary } = teamGlowColors(abbrev);
   // Prefer the primary brand color when it's bright enough to read on navy.
   if (relativeLuminance(primary) >= 0.15) return primary;

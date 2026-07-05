@@ -13,31 +13,24 @@ NBA shooting analytics with a natural-language **Ask** interface and interactive
 
 | Area | What it does |
 |------|----------------|
-| **Ask** (`/`) | NL questions → Cohere generates SQL → read-only Postgres → headline answer + table + player links |
+| **Ask** (`/`) | NL questions → Cohere generates SQL → read-only Postgres → enriched answer + optional table + shot-chart links |
 | **Shot maps** (`/stats`) | Search active roster, heatmap vs league, hexbin shot chart, zone tooltips |
 | **Player detail** (`/stats/[personId]`) | Deep-link to a player's shot map and season stats |
-| **Season stats panel** | Per-game box score (PTS/REB/AST, shooting splits, GP/MIN/+/-) with independent RS/PO toggle when playoff data exists |
+| **Season stats panel** | Per-game box score (PTS/REB/AST, shooting splits, GP/MIN/+/-); follows the page-level RS/PO toggle |
 | **Theme** | Light/dark mode via header toggle; defaults to system preference |
 
 ## Routes
-
-### Pages
 
 | Route | Purpose |
 |-------|---------|
 | `/` | Ask homepage |
 | `/stats` | Browse players + shot maps |
 | `/stats/[personId]` | Player shot chart detail |
-
-### API
-
-| Route | Purpose |
-|-------|---------|
 | `POST /api/ask` | Natural-language query (Cohere + readonly Postgres) |
 | `GET /api/shots/[playerId]?seasonType=` | Shot locations, zone aggregates, totals, league averages |
 | `GET /api/stats/[playerId]?seasonType=` | Per-game season stats from `nba_player_stats` |
 
-Player lists are loaded server-side via `getActivePlayers()` on stats pages — not through a separate API route.
+Player lists load server-side via `getActivePlayers()` on stats pages — there is no `/api/players` route.
 
 ## Quick start
 
@@ -53,13 +46,13 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ```bash
 # App (server-side only)
-SUPABASE_URL=...
-SUPABASE_ANON_KEY=...
-COHERE_API_KEY=...
-ASK_READONLY_DATABASE_URL=...
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+COHERE_API_KEY=
+ASK_READONLY_DATABASE_URL=
 
 # Scraper only — never expose to browser or Vercel frontend
-SUPABASE_SERVICE_ROLE_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=
 ```
 
 **Ask readonly setup:** run [`scripts/ask_readonly_setup.sql`](scripts/ask_readonly_setup.sql) in Supabase, then set `ASK_READONLY_DATABASE_URL` to the transaction-mode pooled connection string using the `ask_readonly` credentials.
@@ -76,6 +69,7 @@ flowchart TD
 
   askApi --> cohere[CohereAPI]
   askApi --> pgReadonly[ask_readonly_Postgres]
+  askApi --> supabasePlayers[Supabase_nba_players]
 
   shotsApi --> supabase[(Supabase)]
   statsApi --> supabase
@@ -85,10 +79,8 @@ flowchart TD
   scraper --> supabase
 ```
 
-### Runtime data flow
-
 ```text
-Browser → POST /api/ask              → Cohere (SQL + summary) + ask_readonly Postgres
+Browser → POST /api/ask              → Cohere (SQL + summary) + ask_readonly Postgres + Supabase (player links)
 Browser → GET /api/shots/[playerId]   → Supabase nba_shots        (revalidate 30m)
 Browser → GET /api/stats/[playerId]   → Supabase nba_player_stats (revalidate 30m)
 Server  → getActivePlayers()          → Supabase nba_players        (revalidate 24h)
@@ -99,49 +91,58 @@ Server  → getActivePlayers()          → Supabase nba_players        (revalid
 | Path | Role |
 |------|------|
 | `lib/cohere/` | SQL generation + NL summary prompts |
+| `lib/ask/unsupportedQuestion.ts` | Opponent/matchup detection + hallucinated SQL guard |
 | `lib/sql/validate.ts` | SELECT-only regex guard for Ask queries |
+| `lib/sql/playerFilter.ts` | Extract player name ILIKE filters from generated SQL |
+| `lib/sql/applyReferencedPlayerIds.ts` | Rewrite name filters to resolved `person_id` predicates |
+| `lib/sql/personIdsForRewrite.ts` | Prefer DB-resolved IDs over Cohere's `referenced_player_ids` |
 | `lib/db/readonlyClient.ts` | `pg` pool on `ASK_READONLY_DATABASE_URL` |
 | `lib/rateLimit.ts` | In-memory 20 req/hr per IP for `/api/ask` |
-| `lib/nba/players.ts` | Active roster from Supabase |
+| `lib/renderAskAnswer.ts` | Highlight stats, player names, and team colors in Ask answers |
+| `lib/nba/players.ts` | Active roster + player link resolution for Ask |
 | `lib/nba/shots.ts` | Paginated shot fetch + league zone averages |
 | `lib/nba/playerStats.ts` | Season box scores (`per_mode=PerGame`, `measure_type=Base`) |
-| `lib/nba/season.ts` | `CURRENT_SEASON` constant (`2025-26`) |
+| `lib/nba/court.ts` | Half-court SVG geometry and zone polygons |
+| `lib/chartTheme.ts` | Shared light/dark palette for shot charts |
+| `lib/teamColors.ts` | NBA team colors for Ask links and headshot glow |
 | `lib/zoneComparison.ts` | Binomial tail tests for zone vs league copy |
 | `scripts/nba_scraper.py` | Ingestion from `stats.nba.com` → Supabase |
 
 ## Ask
 
 1. User submits a question on `/`.
-2. Cohere generates a single `SELECT` (JSON schema output).
-3. `validateSql()` enforces table allowlist and keyword guard.
-4. Query runs on `ask_readonly` role (3s statement timeout).
-5. Player names resolved for `playerLinks` when IDs are returned.
-6. Cohere writes a 1–3 sentence answer from the row data.
+2. **Unsupported questions** (opponent/matchup phrasing) short-circuit with a clear message and player links when names are detected.
+3. Cohere generates a single `SELECT` plus `referenced_player_ids` (JSON schema output).
+4. Player names in SQL are resolved via Supabase; name filters are rewritten to `person_id` predicates when possible.
+5. `validateSql()` enforces table allowlist and keyword guard; hallucinated opponent filters in `shot_zone_basic` are rejected.
+6. Query runs on `ask_readonly` role (3s statement timeout).
+7. Cohere writes a 1–3 sentence answer from the row data; the UI enriches it with bold stats, linked player names, and team colors.
+8. Matching players get **View shot chart** cards linking to `/stats/[personId]`.
 
 **Ranking questions** (best/worst/highest/lowest) require minimum sample sizes in generated SQL: 100 shot attempts, `(st.fta * st.gp) >= 100`, `(st.fg3a * st.gp) >= 100`, `(st.fga * st.gp) >= 200`, or `gp >= 20` depending on stat type. PerGame rows store per-game averages, so attempt totals use `column * gp`.
 
 **Stats table convention:** `nba_player_stats` queries filter `per_mode = 'PerGame' AND measure_type = 'Base'`. Team filters use `st.team_abbreviation`, not `nba_players.team_abbreviation`.
 
-### Acceptance checklist
+### Example questions
+
+See `components/ExampleChips.tsx` for the homepage chips. Good coverage includes:
 
 - "How many points did LeBron average this season?"
 - "What was Steph Curry's 3PT% from the corner?"
 - "Which player had the best free throw percentage?"
 - "How did Luka and Jokic compare in shot selection by zone?"
-- "Did [player] shoot better in the 4th quarter?"
-- Out-of-scope question (e.g. "how did he shoot against the Celtics") — graceful empty result, no hallucinated numbers
+- "Did Stephen Curry shoot better in the 4th quarter?"
+- Out-of-scope matchup question (e.g. "how did he shoot against the Celtics") — graceful message, no hallucinated numbers
 
 ## Shot maps
 
 1. Open `/stats` or follow a player link from Ask results.
 2. Search and select a player.
-3. Toggle **Regular Season** / **Playoffs** for shot data.
+3. Toggle **Regular Season** / **Playoffs** — controls both the shot chart and the season stats panel.
 4. Switch **Heatmap** (zone FG% vs league) or **Shot Chart** (hexbin density).
-5. View **Season stats** in the sidebar — independent RS/PO toggle when playoff stats exist.
+5. View per-game season stats in the sidebar for the selected season type.
 
 ## Data ingestion
-
-Install Python dependencies and sync from `stats.nba.com`:
 
 ```bash
 pip install -r scripts/requirements.txt
